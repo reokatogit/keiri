@@ -1,9 +1,9 @@
 import os
 import time
 from watchdog.observers import Observer
-from keiri_project.file_watcher import FolderHandler
-from keiri_project.config import TEMP_ROOT, OUTPUT_ROOT, WATCH_DIR
-from keiri_project.processor import start_merge_summary_watcher
+from .file_watcher import FolderHandler
+from .config import TEMP_ROOT, OUTPUT_ROOT, WATCH_DIR
+from .processor import start_merge_summary_watcher
 
 print("✅ main.py 開始")
 print(f"TEMP_ROOT = {TEMP_ROOT}")
