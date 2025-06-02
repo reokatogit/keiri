@@ -9,7 +9,6 @@ print("✅ main.py 開始")
 print(f"TEMP_ROOT = {TEMP_ROOT}")
 print(f"OUTPUT_ROOT = {OUTPUT_ROOT}")
 print(f"WATCH_DIR = {WATCH_DIR}")
-
 if __name__ == "__main__":
     print("main.py if __name__ == '__main__' に入った")
 
