@@ -1,0 +1,499 @@
+﻿種別,元の名前
+APIキー取得失敗,No module named 'keiriver2'
+列,企業（列が存在しません）
+列,店舗（列が存在しません）
+APIエラー,"店舗: かつくらくずはﾓｰﾙ店様 (
+
+You tried to access openai.ChatCompletion, but this is no longer supported in openai>=1.0.0 - see the README at https://github.com/openai/openai-python for the API.
+
+You can run `openai migrate` to automatically upgrade your codebase to use the 1.0.0 interface. 
+
+Alternatively, you can pin your installation to the old version, e.g. `pip install openai==0.28`
+
+A detailed migration guide is available here: https://github.com/openai/openai-python/discussions/742
+)"
+店舗,かつくらくずはﾓｰﾙ店様
+APIエラー,"店舗: 家族亭ならﾌｧﾐﾘｰ店様分 (
+
+You tried to access openai.ChatCompletion, but this is no longer supported in openai>=1.0.0 - see the README at https://github.com/openai/openai-python for the API.
+
+You can run `openai migrate` to automatically upgrade your codebase to use the 1.0.0 interface. 
+
+Alternatively, you can pin your installation to the old version, e.g. `pip install openai==0.28`
+
+A detailed migration guide is available here: https://github.com/openai/openai-python/discussions/742
+)"
+店舗,家族亭ならﾌｧﾐﾘｰ店様分
+APIエラー,"店舗: 丸源ﾗｰﾒﾝ鹿児島新栄店様 (
+
+You tried to access openai.ChatCompletion, but this is no longer supported in openai>=1.0.0 - see the README at https://github.com/openai/openai-python for the API.
+
+You can run `openai migrate` to automatically upgrade your codebase to use the 1.0.0 interface. 
+
+Alternatively, you can pin your installation to the old version, e.g. `pip install openai==0.28`
+
+A detailed migration guide is available here: https://github.com/openai/openai-python/discussions/742
+)"
+店舗,丸源ﾗｰﾒﾝ鹿児島新栄店様
+APIエラー,"店舗: しゃぶしゃぶﾌﾞｯﾌｪしゃ (
+
+You tried to access openai.ChatCompletion, but this is no longer supported in openai>=1.0.0 - see the README at https://github.com/openai/openai-python for the API.
+
+You can run `openai migrate` to automatically upgrade your codebase to use the 1.0.0 interface. 
+
+Alternatively, you can pin your installation to the old version, e.g. `pip install openai==0.28`
+
+A detailed migration guide is available here: https://github.com/openai/openai-python/discussions/742
+)"
+店舗,しゃぶしゃぶﾌﾞｯﾌｪしゃ
+APIエラー,"店舗: 焼肉の名門天壇北山店様 (
+
+You tried to access openai.ChatCompletion, but this is no longer supported in openai>=1.0.0 - see the README at https://github.com/openai/openai-python for the API.
+
+You can run `openai migrate` to automatically upgrade your codebase to use the 1.0.0 interface. 
+
+Alternatively, you can pin your installation to the old version, e.g. `pip install openai==0.28`
+
+A detailed migration guide is available here: https://github.com/openai/openai-python/discussions/742
+)"
+店舗,焼肉の名門天壇北山店様
+APIエラー,"店舗: 丸源ﾗｰﾒﾝ豊田若林店様分 (
+
+You tried to access openai.ChatCompletion, but this is no longer supported in openai>=1.0.0 - see the README at https://github.com/openai/openai-python for the API.
+
+You can run `openai migrate` to automatically upgrade your codebase to use the 1.0.0 interface. 
+
+Alternatively, you can pin your installation to the old version, e.g. `pip install openai==0.28`
+
+A detailed migration guide is available here: https://github.com/openai/openai-python/discussions/742
+)"
+店舗,丸源ﾗｰﾒﾝ豊田若林店様分
+APIエラー,"店舗: 江戸前回転鮨弥一阪急う (
+
+You tried to access openai.ChatCompletion, but this is no longer supported in openai>=1.0.0 - see the README at https://github.com/openai/openai-python for the API.
+
+You can run `openai migrate` to automatically upgrade your codebase to use the 1.0.0 interface. 
+
+Alternatively, you can pin your installation to the old version, e.g. `pip install openai==0.28`
+
+A detailed migration guide is available here: https://github.com/openai/openai-python/discussions/742
+)"
+店舗,江戸前回転鮨弥一阪急う
+APIエラー,"店舗: 七輪炭火焼肉遊輪読売ﾗﾝ (
+
+You tried to access openai.ChatCompletion, but this is no longer supported in openai>=1.0.0 - see the README at https://github.com/openai/openai-python for the API.
+
+You can run `openai migrate` to automatically upgrade your codebase to use the 1.0.0 interface. 
+
+Alternatively, you can pin your installation to the old version, e.g. `pip install openai==0.28`
+
+A detailed migration guide is available here: https://github.com/openai/openai-python/discussions/742
+)"
+店舗,七輪炭火焼肉遊輪読売ﾗﾝ
+APIエラー,"店舗: 丸源ﾗｰﾒﾝ草加店様分 (
+
+You tried to access openai.ChatCompletion, but this is no longer supported in openai>=1.0.0 - see the README at https://github.com/openai/openai-python for the API.
+
+You can run `openai migrate` to automatically upgrade your codebase to use the 1.0.0 interface. 
+
+Alternatively, you can pin your installation to the old version, e.g. `pip install openai==0.28`
+
+A detailed migration guide is available here: https://github.com/openai/openai-python/discussions/742
+)"
+店舗,丸源ﾗｰﾒﾝ草加店様分
+APIエラー,"店舗: 椿屋茶房丸ﾋﾞﾙ店様分 (
+
+You tried to access openai.ChatCompletion, but this is no longer supported in openai>=1.0.0 - see the README at https://github.com/openai/openai-python for the API.
+
+You can run `openai migrate` to automatically upgrade your codebase to use the 1.0.0 interface. 
+
+Alternatively, you can pin your installation to the old version, e.g. `pip install openai==0.28`
+
+A detailed migration guide is available here: https://github.com/openai/openai-python/discussions/742
+)"
+店舗,椿屋茶房丸ﾋﾞﾙ店様分
+APIエラー,"店舗: 家族亭ｱﾘｵ北砂店様分 (
+
+You tried to access openai.ChatCompletion, but this is no longer supported in openai>=1.0.0 - see the README at https://github.com/openai/openai-python for the API.
+
+You can run `openai migrate` to automatically upgrade your codebase to use the 1.0.0 interface. 
+
+Alternatively, you can pin your installation to the old version, e.g. `pip install openai==0.28`
+
+A detailed migration guide is available here: https://github.com/openai/openai-python/discussions/742
+)"
+店舗,家族亭ｱﾘｵ北砂店様分
+APIエラー,"店舗: ぼて六甲店様分 (
+
+You tried to access openai.ChatCompletion, but this is no longer supported in openai>=1.0.0 - see the README at https://github.com/openai/openai-python for the API.
+
+You can run `openai migrate` to automatically upgrade your codebase to use the 1.0.0 interface. 
+
+Alternatively, you can pin your installation to the old version, e.g. `pip install openai==0.28`
+
+A detailed migration guide is available here: https://github.com/openai/openai-python/discussions/742
+)"
+店舗,ぼて六甲店様分
+APIエラー,"店舗: 丸源ﾗｰﾒﾝ練馬関町店様分 (
+
+You tried to access openai.ChatCompletion, but this is no longer supported in openai>=1.0.0 - see the README at https://github.com/openai/openai-python for the API.
+
+You can run `openai migrate` to automatically upgrade your codebase to use the 1.0.0 interface. 
+
+Alternatively, you can pin your installation to the old version, e.g. `pip install openai==0.28`
+
+A detailed migration guide is available here: https://github.com/openai/openai-python/discussions/742
+)"
+APIエラー,"店舗: 焼肉きんぐ三鷹野崎店様 (
+
+You tried to access openai.ChatCompletion, but this is no longer supported in openai>=1.0.0 - see the README at https://github.com/openai/openai-python for the API.
+
+You can run `openai migrate` to automatically upgrade your codebase to use the 1.0.0 interface. 
+
+Alternatively, you can pin your installation to the old version, e.g. `pip install openai==0.28`
+
+A detailed migration guide is available here: https://github.com/openai/openai-python/discussions/742
+)"
+APIエラー,"店舗: 濵かつ福岡小田部店様分 (
+
+You tried to access openai.ChatCompletion, but this is no longer supported in openai>=1.0.0 - see the README at https://github.com/openai/openai-python for the API.
+
+You can run `openai migrate` to automatically upgrade your codebase to use the 1.0.0 interface. 
+
+Alternatively, you can pin your installation to the old version, e.g. `pip install openai==0.28`
+
+A detailed migration guide is available here: https://github.com/openai/openai-python/discussions/742
+)"
+APIエラー,"店舗: 江戸前回転鮨弥一堺中央 (
+
+You tried to access openai.ChatCompletion, but this is no longer supported in openai>=1.0.0 - see the README at https://github.com/openai/openai-python for the API.
+
+You can run `openai migrate` to automatically upgrade your codebase to use the 1.0.0 interface. 
+
+Alternatively, you can pin your installation to the old version, e.g. `pip install openai==0.28`
+
+A detailed migration guide is available here: https://github.com/openai/openai-python/discussions/742
+)"
+APIエラー,"店舗: 加東市役所税務課様分 (
+
+You tried to access openai.ChatCompletion, but this is no longer supported in openai>=1.0.0 - see the README at https://github.com/openai/openai-python for the API.
+
+You can run `openai migrate` to automatically upgrade your codebase to use the 1.0.0 interface. 
+
+Alternatively, you can pin your installation to the old version, e.g. `pip install openai==0.28`
+
+A detailed migration guide is available here: https://github.com/openai/openai-python/discussions/742
+)"
+APIエラー,"店舗: 焼肉きんぐ秋田広面店様 (
+
+You tried to access openai.ChatCompletion, but this is no longer supported in openai>=1.0.0 - see the README at https://github.com/openai/openai-python for the API.
+
+You can run `openai migrate` to automatically upgrade your codebase to use the 1.0.0 interface. 
+
+Alternatively, you can pin your installation to the old version, e.g. `pip install openai==0.28`
+
+A detailed migration guide is available here: https://github.com/openai/openai-python/discussions/742
+)"
+APIエラー,"店舗: 丸源ﾗｰﾒﾝ福山引野店様分 (
+
+You tried to access openai.ChatCompletion, but this is no longer supported in openai>=1.0.0 - see the README at https://github.com/openai/openai-python for the API.
+
+You can run `openai migrate` to automatically upgrade your codebase to use the 1.0.0 interface. 
+
+Alternatively, you can pin your installation to the old version, e.g. `pip install openai==0.28`
+
+A detailed migration guide is available here: https://github.com/openai/openai-python/discussions/742
+)"
+APIエラー,"店舗: 丸源ﾗｰﾒﾝ所沢北野店様分 (
+
+You tried to access openai.ChatCompletion, but this is no longer supported in openai>=1.0.0 - see the README at https://github.com/openai/openai-python for the API.
+
+You can run `openai migrate` to automatically upgrade your codebase to use the 1.0.0 interface. 
+
+Alternatively, you can pin your installation to the old version, e.g. `pip install openai==0.28`
+
+A detailed migration guide is available here: https://github.com/openai/openai-python/discussions/742
+)"
+APIエラー,"店舗: ｽﾃｰｷﾗﾝﾄﾞ神戸館様分 (
+
+You tried to access openai.ChatCompletion, but this is no longer supported in openai>=1.0.0 - see the README at https://github.com/openai/openai-python for the API.
+
+You can run `openai migrate` to automatically upgrade your codebase to use the 1.0.0 interface. 
+
+Alternatively, you can pin your installation to the old version, e.g. `pip install openai==0.28`
+
+A detailed migration guide is available here: https://github.com/openai/openai-python/discussions/742
+)"
+APIエラー,"店舗: ｸﾞﾘﾙｷｬﾝﾌﾟ新潟店様分 (
+
+You tried to access openai.ChatCompletion, but this is no longer supported in openai>=1.0.0 - see the README at https://github.com/openai/openai-python for the API.
+
+You can run `openai migrate` to automatically upgrade your codebase to use the 1.0.0 interface. 
+
+Alternatively, you can pin your installation to the old version, e.g. `pip install openai==0.28`
+
+A detailed migration guide is available here: https://github.com/openai/openai-python/discussions/742
+)"
+APIエラー,"店舗: 丸源ﾗｰﾒﾝ小平店様分 (
+
+You tried to access openai.ChatCompletion, but this is no longer supported in openai>=1.0.0 - see the README at https://github.com/openai/openai-python for the API.
+
+You can run `openai migrate` to automatically upgrade your codebase to use the 1.0.0 interface. 
+
+Alternatively, you can pin your installation to the old version, e.g. `pip install openai==0.28`
+
+A detailed migration guide is available here: https://github.com/openai/openai-python/discussions/742
+)"
+APIエラー,店舗: かつくらくずはﾓｰﾙ店様 (Incorrect API key provided: sddfffff**ffff. You can find your API key at https://platform.openai.com/account/api-keys.)
+APIエラー,店舗: 家族亭ならﾌｧﾐﾘｰ店様分 (Incorrect API key provided: sddfffff**ffff. You can find your API key at https://platform.openai.com/account/api-keys.)
+APIエラー,店舗: 丸源ﾗｰﾒﾝ鹿児島新栄店様 (Incorrect API key provided: sddfffff**ffff. You can find your API key at https://platform.openai.com/account/api-keys.)
+APIエラー,店舗: しゃぶしゃぶﾌﾞｯﾌｪしゃ (Incorrect API key provided: sddfffff**ffff. You can find your API key at https://platform.openai.com/account/api-keys.)
+列,企業が存在しません,
+列,店舗が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,店舗が存在しません,
+列,企業が存在しません,
+列,店舗が存在しません,
+列,企業が存在しません,
+列,店舗が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,店舗が存在しません,
+列,企業が存在しません,
+列,店舗が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,店舗が存在しません,
+列,企業が存在しません,
+列,店舗が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,店舗が存在しません,
+列,企業が存在しません,
+列,店舗が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,店舗が存在しません,
+列,企業が存在しません,
+列,店舗が存在しません,
+列,企業が存在しません,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\_全社統合\全社統合_2024-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\_全社統合\全社統合_2024-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\_全社統合\全社統合_2025-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\_全社統合\全社統合_2025-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\営業部\営業部_2024-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\営業部\営業部_2024-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\営業部\営業部_2025-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\営業部\営業部_2025-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\全社統合_2024-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\全社統合_2024-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\全社統合_2025-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\全社統合_2025-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\営業部_2024-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\営業部_2024-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\営業部_2025-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\営業部_2025-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\全社統合_2024-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\全社統合_2024-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\全社統合_2025-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\全社統合_2025-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\営業部_2024-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\営業部_2024-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\営業部_2025-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\営業部_2025-01_records.xlsx,
+列,企業が存在しません,
+列,店舗が存在しません,
+列,企業が存在しません,
+列,店舗が存在しません,
+列,企業が存在しません,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\_全社統合\全社統合_2024-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\_全社統合\全社統合_2024-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\_全社統合\全社統合_2025-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\_全社統合\全社統合_2025-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\営業部\営業部_2024-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\全社統合_2024-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\営業部\営業部_2024-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\全社統合_2024-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\営業部\営業部_2025-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\全社統合_2025-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\営業部\営業部_2025-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\全社統合_2025-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\営業部_2024-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\営業部_2024-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\営業部_2025-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\営業部_2025-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\全社統合_2024-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\全社統合_2024-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\全社統合_2025-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\全社統合_2025-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\営業部_2024-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\営業部_2024-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\営業部_2025-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\営業部_2025-01_records.xlsx,
+列,企業が存在しません,
+列,店舗が存在しません,
+列,企業が存在しません,
+列,店舗が存在しません,
+列,企業が存在しません,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\_全社統合\全社統合_2024-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\_全社統合\全社統合_2024-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\_全社統合\全社統合_2025-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\_全社統合\全社統合_2025-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\全社統合_2024-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\営業部\営業部_2024-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\全社統合_2024-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\営業部\営業部_2024-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\全社統合_2025-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\営業部\営業部_2025-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\営業部\営業部_2025-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\全社統合_2024-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\全社統合_2024-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\全社統合_2025-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\全社統合_2025-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\営業部_2024-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\全社統合_2025-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\営業部_2024-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\営業部_2024-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\営業部_2025-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\営業部_2024-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\営業部_2025-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\営業部_2025-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\営業部_2025-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\全社統合_2024-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\全社統合_2024-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\全社統合_2025-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\全社統合_2025-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\営業部_2024-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\営業部_2024-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\営業部_2025-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\営業部_2025-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\全社統合_2024-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\全社統合_2024-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\全社統合_2025-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\全社統合_2025-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\営業部_2024-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\営業部_2024-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\営業部_2025-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\processed\unknown\営業部_2025-01_records.xlsx,
+列,企業が存在しません,
+列,店舗が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,店舗が存在しません,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\output\_全社統合\全社統合_2025-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\output\営業部\営業部_2025-01_records.csv,
+列,企業が存在しません,
+列,店舗が存在しません,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\output\_全社統合\全社統合_2025-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\output\営業部\営業部_2025-01_records.csv,
+列,企業が存在しません,
+列,店舗が存在しません,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\output\_全社統合\全社統合_2025-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\output\営業部\営業部_2025-01_records.csv,
+列,企業が存在しません,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\output\_全社統合\全社統合_2024-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\output\営業部\営業部_2024-01_records.csv,
+列,企業が存在しません,
+列,店舗が存在しません,
+列,企業が存在しません,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\output\_全社統合\全社統合_2024-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\output\_全社統合\全社統合_2024-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\output\_全社統合\全社統合_2025-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\output\_全社統合\全社統合_2025-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\output\営業部\営業部_2024-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\output\営業部\営業部_2024-01_records.xlsx,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\output\営業部\営業部_2025-01_records.csv,
+ファイル名,C:\Users\8963948\Desktop\帳簿アップロード\output\営業部\営業部_2025-01_records.xlsx,
+列,企業が存在しません,
+列,店舗が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,店舗が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+読込エラー,C:\Users\8963948\Desktop\帳簿アップロード\営業部_アートセッティングデリバリー株式会社_2025年1月.xls: Missing optional dependency 'xlrd'. Install xlrd >= 2.0.1 for xls Excel support Use pip or conda to install xlrd.,
+列,企業が存在しません,
+列,店舗が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+読込エラー,C:\Users\8963948\Desktop\帳簿アップロード\営業部_アートセッティングデリバリー株式会社_2025年1月.xls: Missing optional dependency 'xlrd'. Install xlrd >= 2.0.1 for xls Excel support Use pip or conda to install xlrd.,
+列,企業が存在しません,
+列,企業が存在しません,
+列,店舗が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,店舗が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,店舗が存在しません,
+列,企業が存在しません,
+列,店舗が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,店舗が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,店舗が存在しません,
+読込エラー,C:\Users\8963948\Desktop\帳簿アップロード\営業部_株式会社 Forneeds_2025年1月.xlsx: [Errno 2] No such file or directory: 'C:\\Users\\8963948\\Desktop\\帳簿アップロード\\営業部_株式会社 Forneeds_2025年1月.xlsx',
+列,企業が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,店舗が存在しません,
+列,企業が存在しません,
+列,店舗が存在しません,
+読込エラー,C:\Users\8963948\Desktop\帳簿アップロード\営業部_アートセッティングデリバリー株式会社_2025年1月.xls: Missing optional dependency 'xlrd'. Install xlrd >= 2.0.1 for xls Excel support Use pip or conda to install xlrd.,
+列,企業が存在しません,
+列,店舗が存在しません,
+列,企業が存在しません,
+列,店舗が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+読込エラー,C:\Users\8963948\Desktop\帳簿アップロード\営業部_アートセッティングデリバリー株式会社_2025年1月.xls: Missing optional dependency 'xlrd'. Install xlrd >= 2.0.1 for xls Excel support Use pip or conda to install xlrd.,
+列,企業が存在しません,
+列,店舗が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,店舗が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,店舗が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+読込エラー,C:\Users\8963948\Desktop\帳簿アップロード\営業部_アートセッティングデリバリー株式会社_2025年1月.xls: Missing optional dependency 'xlrd'. Install xlrd >= 2.0.1 for xls Excel support Use pip or conda to install xlrd.,
+列,企業が存在しません,
+列,企業が存在しません,
+列,店舗が存在しません,
+列,企業が存在しません,
+列,店舗が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,店舗が存在しません,
+列,企業が存在しません,
+列,店舗が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
+列,企業が存在しません,
