@@ -4,6 +4,7 @@ import os
 import time
 import shutil
 import threading
+from logger import log_info
 from processor import handle_new_file
 from parser import parse_filename
 from config import (
@@ -106,8 +107,18 @@ def run_batch_watcher() -> None:
 
 def run_batch_watcher_loop():
     """タスクトレイから呼び出す用：停止フラグをクリアして永続ループを起動"""
+    # 停止フラグクリア前後にログ
+    log_info("ウォッチャー再開：停止フラグをクリア")
     _stop_event.clear()
-    run_batch_watcher()
+    log_info("ウォッチャー開始：run_batch_watcher を呼び出し")
+    try:
+        run_batch_watcher()
+    except Exception as e:
+        # 予期せぬ例外をキャッチしてログに残す
+        log_info(f"ウォッチャー例外発生: {e}")
+    finally:
+        # run_batch_watcher が返ってきた（あるいは例外後）に停止を記録
+        log_info("ウォッチャー終了：run_batch_watcher から戻り")
 
 def stop_batch_watcher():
     """run_batch_watcher のループを抜けさせるフラグを立てる"""

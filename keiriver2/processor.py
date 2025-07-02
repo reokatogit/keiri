@@ -5,7 +5,7 @@ import pandas as pd
 import csv
 from datetime import datetime
 import openai
-
+from typing import List
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 def call_chatgpt_api(prompt: str,
@@ -13,22 +13,35 @@ def call_chatgpt_api(prompt: str,
                      temperature: float = 0.0,
                      max_tokens: int = 50) -> str:
     api_key = os.getenv("OPENAI_API_KEY")
+    # 1) テストモード：キーがない場合は候補返却（既存挙動）
     if not api_key:
-        # テストモード：APIキー未設定なら、prompt中の候補をそのまま返す
         m = re.search(r'候補: \["(.+)"\]', prompt)
         return m.group(1) if m else ""
-    # 実運用モード：APIを呼び出す
-    response = openai.ChatCompletion.create(
-        model=model,
-        messages=[
-            {"role": "system",  "content": "あなたは正規化アシスタントです。"},
-            {"role": "user",    "content": prompt}
-        ],
-        temperature=temperature,
-        max_tokens=max_tokens,
-        n=1,
-    )
-    return response.choices[0].message.content.strip()
+
+    try:
+        response = openai.ChatCompletion.create(
+            model=model,
+            messages=[
+                {"role": "system",  "content": "あなたは正規化アシスタントです。"},
+                {"role": "user",    "content": prompt}
+            ],
+            temperature=temperature,
+            max_tokens=max_tokens,
+            n=1,
+        )
+        return response.choices[0].message.content.strip()
+    except openai.error.APIConnectionError as e:
+        log_unmatched('ChatGPT APIエラー', f"接続エラー: {e}")
+    except openai.error.RateLimitError as e:
+        log_unmatched('ChatGPT APIエラー', f"レート制限: {e}")
+    except openai.error.InvalidRequestError as e:
+        log_unmatched('ChatGPT APIエラー', f"無効なリクエスト: {e}")
+    except openai.error.OpenAIError as e:
+        log_unmatched('ChatGPT APIエラー', f"サーバーエラー: {e}")
+
+    # 何らかのエラーが起きた場合はフォールバック
+    m = re.search(r'候補: \["(.+)"\]', prompt)
+    return m.group(1) if m else ""
 _mapping_store: dict[str, str] = {}
 
 def load_mapping_store() -> dict[str, str]:
@@ -125,6 +138,14 @@ def normalize_field(orig: str, mapping: dict, dict_path: str, field_name: str) -
     response = call_chatgpt_api(prompt)
     normalized = response.strip()
 
+    # 6) API自体は成功しても「そのまま返し」や空文字なら名寄せ失敗扱い
+    if not normalized or normalized == cleaned:
+        log_unmatched(
+            '名寄せ失敗',
+            f"{field_name}: 候補={cleaned} → 正式名称取得失敗"
+        )
+        return cleaned
+
     # 4) 辞書追加
     if normalized and normalized != cleaned:
         append_mapping(cleaned, normalized, field_name)
@@ -170,7 +191,7 @@ AMOUNT_KEYWORDS = [
     '金額','合計額','total','amount',
     '売上高','sales','revenue',
     '請求金額','ご請求金額','請求額',
-    '作業金額','工賃',
+    '作業金額','工賃','売上','売り上げ'
     '手数料','commission','handling_fee',
     '運賃','送料','freight','shipping'
 ]
@@ -242,15 +263,47 @@ def parse_flexible_date(raw_date, year_hint: str) -> str:
     except:
         pass
     return ''
-def pick_store_column(row: pd.Series, raw_cols: list[str]) -> str:
-    # 優先的に使いたい列名のリスト
-    aliases = ['ご依頼主', 'お客様', '送り先', '発送先', '店舗']
-    # 正規化した alias と実際の列名を比較
-    norm_aliases = [clean_string(a) for a in aliases]
-    for orig in raw_cols:
-        if clean_string(orig) in norm_aliases:
+def normalize(col: str) -> str:
+    s = col.lower()
+    s = s.translate(str.maketrans({'　':' ', '（':'(', '）':')'}))
+    s = re.sub(r'[^\w\s]', '', s)
+    s = s.replace(' ', '')
+    for honorific in ['様','さん','殿','先生','御中']:
+        s = s.replace(honorific, '')
+    return s
+
+def pick_store_column(row: pd.Series, raw_cols: List[str]) -> str:
+    # 正規化済みカラム名リスト
+    norm_map = {normalize(c): c for c in raw_cols}
+    norm_cols = list(norm_map.keys())
+
+    # マッチング用パターン
+    patterns = [
+        r'^依頼.*',        # 依頼主、依頼者、依頼先...
+        r'^ご?依頼.*',     # ご依頼主、ご依頼人...
+        r'^お客様.*',      # お客様、お客様名...
+        r'顧客.*',         # 顧客、顧客名...
+        r'(得意先|クライアント)',  # 得意先、クライアント
+        r'(送|発|配)送.*先',  # 送り先、発送先、配送先
+        r'宛先',           # 宛先
+        r'店舗.*',         # 店舗、店舗名
+        r'ショップ.*',     # ショップ、ショップ名
+    ]
+
+    # 1) パターンマッチ最優先
+    for pat in patterns:
+        regex = re.compile(pat)
+        for nc in norm_cols:
+            if regex.search(nc):
+                orig = norm_map[nc]
+                return str(row.get(orig, ''))
+
+    # 2) 部分一致フォールバック
+    for nc, orig in norm_map.items():
+        if any(key in nc for key in ['主','客','先','店']):
             return str(row.get(orig, ''))
-    # 見つからなければ既存の「店舗」列
+
+    # 3) それでもなければ「店舗」列
     return str(row.get('店舗', ''))
 
 
@@ -259,12 +312,10 @@ def extract_items(df: pd.DataFrame, meta: dict) -> list[dict]:
     raw_cols  = list(df.columns)
     norm_cols = [normalize_header(c) for c in raw_cols]
 
-    idx_qty    = next(
+    idx_qty = next(
         (
-            i
-            for i, h in enumerate(norm_cols)
-            if h.endswith('数量') and not h.startswith('ランク')
-            
+            i for i, h in enumerate(norm_cols)
+            if h.endswith('数量')  # 末尾が「数量」
         ),
         None
     )
@@ -280,7 +331,13 @@ def extract_items(df: pd.DataFrame, meta: dict) -> list[dict]:
         raw_date = row.get('日付')
         year_hint = meta.get('年月', '').split('-')[0]  # 例: "2025"
         date_str = parse_flexible_date(raw_date, year_hint)
-
+        if not date_str:
+            # date_str が空ならログ出力してスキップ
+            log_unmatched(
+                '日付抽出失敗',
+                f"{meta['filepath']}#行{row_i}: 元値={raw_date}"
+            )
+            continue
         q = try_parse(row.iloc[idx_qty])  if idx_qty  is not None else None
         p = try_parse(row.iloc[idx_unit]) if idx_unit is not None else None
         a = try_parse(row.iloc[idx_amount])
@@ -293,19 +350,19 @@ def extract_items(df: pd.DataFrame, meta: dict) -> list[dict]:
             )
             continue
 
-        if q is not None and p is not None and pd.isna(row.iloc[idx_amount]):
-            a = q * p
-        if q is not None and a is not None and p is None:
-            p = a / q if q else None
-        if p is not None and a is not None and q is None:
-            q = a / p if p else None
-        if None not in (q, p, a) and abs(q * p - a) / max(a, 1) > 0.01:
-            log_unmatched(
-                '不整合',
-                f"{meta['filepath']}#行{row_i}: {q}×{p} ≠ {a}"
-            )
+        #if q is not None and p is not None and pd.isna(row.iloc[idx_amount]):
+            #a = q * p
+        #if q is not None and a is not None and p is None:
+            #p = a / q if q else None
+        #if p is not None and a is not None and q is None:
+            #q = a / p if p else None
+        #if None not in (q, p, a) and abs(q * p - a) / max(a, 1) > 0.01:
+            #log_unmatched(
+                #'不整合',
+                #f"{meta['filepath']}#行{row_i}: {q}×{p} ≠ {a}"
+            #)
 
-        company = normalize_field(str(row.get('企業','')), {}, '', '企業名')
+        #company = normalize_field(str(row.get('企業','')), {}, '', '企業名')
         raw_store = pick_store_column(row, raw_cols)
         store = normalize_field(raw_store, {}, MAPPING_STORE_PATH, '店舗名')
         item    = clean_string(row.get('作業項目/商品名', ''))
@@ -314,7 +371,7 @@ def extract_items(df: pd.DataFrame, meta: dict) -> list[dict]:
             '部署':             meta.get('部署',''),
             '元請け':           meta.get('元請け',''),
             '日付':             date_str,
-            '企業名':           company,
+            #'企業名':           company,
             '店舗名':           store,
             '作業項目/商品名':  item,
             '数量':             q,

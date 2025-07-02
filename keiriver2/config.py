@@ -58,3 +58,12 @@ CONFIG_PATH = os.path.expanduser("~/.keiri_config.json")
 
 # 辞書ファイルのパス（店舗名などの名寄せ用）
 MAPPING_STORE_PATH = '/path/to/mapping_store.csv'
+
+# 未整形・エラー情報の CSV ログ
+UNMATCHED_LOG = os.path.join('log', 'unmatched.csv')
+
+# ウォッチャー稼働ログ（タスクトレイの「ログを見る」で開く）
+WATCH_LOG = os.path.join('log', 'watch_folder.log')
+
+# 確実に log フォルダが存在するようにアプリ起動時に呼んでください
+os.makedirs(os.path.dirname(UNMATCHED_LOG), exist_ok=True)
