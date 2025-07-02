@@ -9,7 +9,8 @@ def parse_filename(filename):
     """
     name = os.path.basename(filename)
     name = os.path.splitext(name)[0]
-
+    name = re.sub(r'_[Ww][Ee][Bb]$', '', name)
+    
     pattern = r'(.+?)_(.+?)_(\d{4})年(\d{1,2})月'
     match = re.match(pattern, name)
 

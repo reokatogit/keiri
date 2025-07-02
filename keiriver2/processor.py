@@ -2,6 +2,52 @@ import os
 import re
 import unicodedata
 import pandas as pd
+import csv
+from datetime import datetime
+import openai
+
+openai.api_key = os.getenv("OPENAI_API_KEY")
+
+def call_chatgpt_api(prompt: str,
+                     model: str = "gpt-3.5-turbo",
+                     temperature: float = 0.0,
+                     max_tokens: int = 50) -> str:
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        # テストモード：APIキー未設定なら、prompt中の候補をそのまま返す
+        m = re.search(r'候補: \["(.+)"\]', prompt)
+        return m.group(1) if m else ""
+    # 実運用モード：APIを呼び出す
+    response = openai.ChatCompletion.create(
+        model=model,
+        messages=[
+            {"role": "system",  "content": "あなたは正規化アシスタントです。"},
+            {"role": "user",    "content": prompt}
+        ],
+        temperature=temperature,
+        max_tokens=max_tokens,
+        n=1,
+    )
+    return response.choices[0].message.content.strip()
+_mapping_store: dict[str, str] = {}
+
+def load_mapping_store() -> dict[str, str]:
+    global _mapping_store
+    if not _mapping_store and os.path.exists(MAPPING_STORE_PATH):
+        with open(MAPPING_STORE_PATH, encoding='utf-8-sig') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                _mapping_store[row['cleaned']] = row['normalized']
+    return _mapping_store
+
+def append_mapping(cleaned: str, normalized: str, field_name: str):
+    header = not os.path.exists(MAPPING_STORE_PATH)
+    with open(MAPPING_STORE_PATH, 'a', newline='', encoding='utf-8-sig') as f:
+        w = csv.writer(f)
+        if header:
+            w.writerow(['cleaned','normalized','field_name','created_at'])
+        w.writerow([cleaned, normalized, field_name, datetime.utcnow().isoformat()])
+    
 
 # ─── 外部ユーティリティ／設定読み込み ───
 try:
@@ -14,14 +60,27 @@ try:
     from parser import parse_filename
 except ImportError:
     def parse_filename(fp: str) -> dict:
-        # filepath, 部署, 元請け, 年月 の最低限を返す
-        return {'filepath': fp, '部署': '', '元請け': '', '年月': ''}
+        fn = os.path.basename(fp)
+        name, _ = os.path.splitext(fn)
+    # 末尾の「_WEB」除去などの処理はそのまま
+        parts = name.split('_')
+    # 最低 3 要素（部署, 元請け, 年月）があれば OK、4 つ目以降は無視する
+        if len(parts) >= 3:
+           dept, contractor, ym_jp = parts[0], parts[1], parts[2]
+        # 以下は変更なし
+        try:
+            y, m = re.match(r'(\d{4})年(\d{1,2})月', ym_jp).groups()
+            ym = f"{y}-{int(m):02d}"
+            return {'filepath': fp, '部署': dept, '元請け': contractor, '年月': ym}
+        except Exception:
+            pass
+        return {'filepath': fp, 'エラー': 'ファイル名パース失敗'}
 
 try:
     from config import (
         VALID_EXTENSIONS,
         WATCH_DIR, PROCESSED_DIR, OUTPUT_DIR,
-        COLUMN_ALIASES
+        COLUMN_ALIASES, MAPPING_STORE_PATH  
     )
 except ImportError:
     # テスト用ダミー設定
@@ -49,9 +108,31 @@ def clean_string(s: str) -> str:
     return s.strip()
 
 # ─── フィールド正規化スタブ ───
+# ─── フィールド正規化（名寄せ） ───
 def normalize_field(orig: str, mapping: dict, dict_path: str, field_name: str) -> str:
-    # ここでマッピング辞書やChatGPT補完ロジックを呼び出せます
-    return orig or ''
+    # 1) 前処理済みテキストをキー化
+    cleaned = clean_string(orig)
+    # 2) 辞書参照
+    store = load_mapping_store()
+    if cleaned in store:
+        return store[cleaned]
+    # 3) ChatGPT補完（仮の呼び出し例）
+    prompt = (
+        f"以下は「{field_name}」の表記ゆれ例です。\n"
+        f"– 候補: [\"{cleaned}\"]\n"
+        "正式名称を一つだけ日本語で返してください。"
+    )
+    response = call_chatgpt_api(prompt)
+    normalized = response.strip()
+
+    # 4) 辞書追加
+    if normalized and normalized != cleaned:
+        append_mapping(cleaned, normalized, field_name)
+        store[cleaned] = normalized
+
+    # 5) フォールバック
+    return normalized or cleaned
+
 
 # ─── ヘッダ正規化強化 ───
 def normalize_header(h: str) -> str:
@@ -127,12 +208,66 @@ def read_with_dynamic_header(path: str) -> pd.DataFrame:
     else:
         return df0
 
+def parse_flexible_date(raw_date, year_hint: str) -> str:
+    """
+    raw_date: 元セル値
+    year_hint: meta['年月'] から取り出した 'YYYY' 部分
+    戻り値: 'YYYY/MM/DD' 形式の文字列、パース失敗時は ''
+    """
+    if pd.isna(raw_date):
+        return ''
+    s = str(raw_date).strip()
+    # 1) 「1月9日」「12月31日」パターン
+    m = re.match(r'^(\d{1,2})月(\d{1,2})日$', 
+                 s
+    )
+    if m:
+        mm, dd = map(int, m.groups())
+        return f"{year_hint}/{mm:02d}/{dd:02d}"
+    # 2) 「1/9」「12/31」「1-9」パターン
+    m = re.match(r'^(\d{1,2})[\/\-](\d{1,2})$', s)
+    if m:
+        mm, dd = map(int, m.groups())
+        return f"{year_hint}/{mm:02d}/{dd:02d}"
+    # 3) 「1月9」「12月31」パターン（「日」だけない）
+    m = re.match(r'^(\d{1,2})月(\d{1,2})$', s)
+    if m:
+        mm, dd = map(int, m.groups())
+        return f"{year_hint}/{mm:02d}/{dd:02d}"
+    # 4) 「2025/1/9」など通常の年月日
+    try:
+        dt = pd.to_datetime(s, errors='coerce')
+        if not pd.isna(dt):
+            return dt.strftime('%Y/%m/%d')
+    except:
+        pass
+    return ''
+def pick_store_column(row: pd.Series, raw_cols: list[str]) -> str:
+    # 優先的に使いたい列名のリスト
+    aliases = ['ご依頼主', 'お客様', '送り先', '発送先', '店舗']
+    # 正規化した alias と実際の列名を比較
+    norm_aliases = [clean_string(a) for a in aliases]
+    for orig in raw_cols:
+        if clean_string(orig) in norm_aliases:
+            return str(row.get(orig, ''))
+    # 見つからなければ既存の「店舗」列
+    return str(row.get('店舗', ''))
+
+
 # ─── レコード抽出 ───
 def extract_items(df: pd.DataFrame, meta: dict) -> list[dict]:
     raw_cols  = list(df.columns)
     norm_cols = [normalize_header(c) for c in raw_cols]
 
-    idx_qty    = next((i for i,h in enumerate(norm_cols) if '数量' in h), None)
+    idx_qty    = next(
+        (
+            i
+            for i, h in enumerate(norm_cols)
+            if h.endswith('数量') and not h.startswith('ランク')
+            
+        ),
+        None
+    )
     idx_unit   = next((i for i,h in enumerate(norm_cols) if '単価' in h), None)
     idx_amount = next((i for i,c in enumerate(raw_cols) if is_amount_header(c)), None)
 
@@ -143,16 +278,14 @@ def extract_items(df: pd.DataFrame, meta: dict) -> list[dict]:
     recs: list[dict] = []
     for row_i, row in df.iterrows():
         raw_date = row.get('日付')
-        if pd.isna(raw_date):
-            date_str = ''
-        else:
-            dt = pd.to_datetime(raw_date, errors='coerce')
-            date_str = dt.strftime('%Y/%m/%d') if not pd.isna(dt) else ''
+        year_hint = meta.get('年月', '').split('-')[0]  # 例: "2025"
+        date_str = parse_flexible_date(raw_date, year_hint)
 
         q = try_parse(row.iloc[idx_qty])  if idx_qty  is not None else None
         p = try_parse(row.iloc[idx_unit]) if idx_unit is not None else None
         a = try_parse(row.iloc[idx_amount])
-
+        if p is not None:
+            p = round(p, 1)
         if a is None:
             log_unmatched(
                 '金額欠損',
@@ -173,7 +306,8 @@ def extract_items(df: pd.DataFrame, meta: dict) -> list[dict]:
             )
 
         company = normalize_field(str(row.get('企業','')), {}, '', '企業名')
-        store   = normalize_field(str(row.get('店舗','')), {}, '', '店舗名')
+        raw_store = pick_store_column(row, raw_cols)
+        store = normalize_field(raw_store, {}, MAPPING_STORE_PATH, '店舗名')
         item    = clean_string(row.get('作業項目/商品名', ''))
 
         recs.append({
@@ -202,15 +336,20 @@ def handle_new_file(filepath: str) -> None:
     print(f"[REGEN] 全社再生成開始: 年月={ym}")
 
     # 1) 対象ファイル収集
+    seen_paths = set()
     candidates: list[tuple[str, dict]] = []
     for base in (WATCH_DIR, PROCESSED_DIR):
         for root, _, files in os.walk(base):
             for fn in files:
                 if not fn.lower().endswith(VALID_EXTENSIONS):
                     continue
-                m = parse_filename(fn)
+                fullpath = os.path.join(root, fn)
+                if fullpath in seen_paths:
+                    continue
+                m = parse_filename(fullpath)
                 if 'エラー' in m or m.get('年月') != ym:
                     continue
+                seen_paths.add(fullpath)
                 candidates.append((os.path.join(root, fn), m))
     print(f"[DEBUG] 対象ファイル数: {len(candidates)}")
 
@@ -325,4 +464,3 @@ def handle_new_file(filepath: str) -> None:
             ws.set_column(i, i, col_widths.get(col, 15))
 
     print(f"[DONE] 全社再生成完了: 年月={ym}／年次完了")
-

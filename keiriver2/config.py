@@ -55,3 +55,6 @@ VALID_EXTENSIONS = ('.xlsx', '.xls', '.csv')
 
 # ── 10) 設定ファイルパス（ユーザーごとに隠しファイルとして保存）
 CONFIG_PATH = os.path.expanduser("~/.keiri_config.json")
+
+# 辞書ファイルのパス（店舗名などの名寄せ用）
+MAPPING_STORE_PATH = '/path/to/mapping_store.csv'
