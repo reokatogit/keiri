@@ -1,198 +1,257 @@
 import os
-import pandas as pd
-import unicodedata
 import re
-from collections import Counter
-from rapidfuzz import process, fuzz
-from plyer import notification
-from config import (
-    WATCH_DIR, OUTPUT_DIR, PROCESSED_DIR,
-    COMPANY_DICT_PATH, STORE_DICT_PATH, STORE_MAPPING_PATH,
-    CLIENT_DICT_PATH, CUSTOMER_DICT_PATH, SHIPTO_DICT_PATH,
-    COLUMN_ALIASES, VALID_EXTENSIONS
-)
-from parser import parse_filename
-from logger import log_unmatched
+import unicodedata
+import pandas as pd
 
-# ─── ユーティリティ群 ───
+# ─── 外部ユーティリティ／設定読み込み ───
+try:
+    from logger import log_unmatched
+except ImportError:
+    def log_unmatched(tag: str, message: str):
+        print(f"[UNMATCHED][{tag}] {message}")
 
-def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """ヘッダーの表記ゆれを標準列名に揃える"""
-    rename_map = {}
-    for std, aliases in COLUMN_ALIASES.items():
-        for alias in aliases:
-            if alias in df.columns:
-                rename_map[alias] = std
-    return df.rename(columns=rename_map)
+try:
+    from parser import parse_filename
+except ImportError:
+    def parse_filename(fp: str) -> dict:
+        # filepath, 部署, 元請け, 年月 の最低限を返す
+        return {'filepath': fp, '部署': '', '元請け': '', '年月': ''}
 
-def load_mapping_dict(path: str) -> dict[str,str]:
-    """辞書CSVを読み込み {表記:標準化} マップを返す"""
-    if os.path.exists(path):
-        d = pd.read_csv(path, dtype=str)
-        return dict(zip(d['表記'], d['標準化']))
-    return {}
+try:
+    from config import (
+        VALID_EXTENSIONS,
+        WATCH_DIR, PROCESSED_DIR, OUTPUT_DIR,
+        COLUMN_ALIASES
+    )
+except ImportError:
+    # テスト用ダミー設定
+    VALID_EXTENSIONS = ('.csv', '.xlsx', '.xls')
+    WATCH_DIR       = 'watch'
+    PROCESSED_DIR   = 'processed'
+    OUTPUT_DIR      = 'output'
+    COLUMN_ALIASES = {
+        '作業項目/商品名': [
+            '作業内容', 'サービス項目', '作業項目',
+            '商品', '品名', '内容', '商品名'
+        ]
+    }
 
-def call_chatgpt(prompt: str, category: str) -> str | None:
-    """ChatGPTに問い合わせて標準化or補完。失敗時はログのみ"""
+# ─── 文字列クリーニング ───
+def clean_string(s: str) -> str:
+    if not isinstance(s, str):
+        return ''
+    # Unicode NFKC 正規化
+    s = unicodedata.normalize('NFKC', s)
+    # 改行をスペースに
+    s = s.replace('\n', ' ')
+    # 連続空白を 1 スペースに
+    s = re.sub(r'\s+', ' ', s)
+    return s.strip()
+
+# ─── フィールド正規化スタブ ───
+def normalize_field(orig: str, mapping: dict, dict_path: str, field_name: str) -> str:
+    # ここでマッピング辞書やChatGPT補完ロジックを呼び出せます
+    return orig or ''
+
+# ─── ヘッダ正規化強化 ───
+def normalize_header(h: str) -> str:
+    """
+    ・Unicode NFKC正規化
+    ・改行・全角/半角スペースを削除
+    ・小文字化
+    """
+    if not isinstance(h, str):
+        return ''
+    s = unicodedata.normalize('NFKC', h)
+    # 改行除去 & 全角／半角スペースをまとめて削除
+    s = re.sub(r'\s+', '', s)
+    return s.lower()
+
+# ─── 数値正規化＆パース ───
+def normalize_numeric_text(s) -> str:
+    if pd.isna(s):
+        return ''
+    text = str(s)
+    z2h = str.maketrans('０１２３４５６７８９．，', '0123456789.,')
+    text = text.translate(z2h)
+    text = re.sub(r'[¥￥円,]', '', text)
+    return text.strip()
+
+def try_parse(s) -> float | None:
     try:
-        import openai
-        if not getattr(openai, "api_key", None):
-            return None
-        resp = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[{"role":"user","content":prompt}],
-            max_tokens=20
-        )
-        return resp.choices[0].message.content.strip()
-    except Exception as e:
-        log_unmatched(f"{category}APIエラー", str(e))
+        num = normalize_numeric_text(s)
+        return float(num) if num != '' else None
+    except:
         return None
 
-def clean_string(s: str) -> str:
-    """最小限の文字列正規化：NFKC＋空白＆記号揃え"""
-    if not isinstance(s, str):
-        return ""
-    s = unicodedata.normalize("NFKC", s)
-    s = s.replace("‐","-").replace("–","-").replace("—","-").replace("―","-")
-    s = re.sub(r'\s+', ' ', s).strip()
-    return s
+# ─── 金額列判定 ───
+AMOUNT_KEYWORDS = [
+    '金額','合計額','total','amount',
+    '売上高','sales','revenue',
+    '請求金額','ご請求金額','請求額',
+    '作業金額','工賃',
+    '手数料','commission','handling_fee',
+    '運賃','送料','freight','shipping'
+]
+AMOUNT_PATTERN = re.compile(r'.*費$')
 
-def normalize_field(orig: str, mapping: dict[str,str], dict_path: str, field_name: str) -> str:
-    """辞書→ファジー→API→ログ の順で標準化し、辞書追記も行う"""
-    s = clean_string(orig)
-    if not s:
-        return ""
-    # 辞書完全一致
-    if s in mapping:
-        return mapping[s]
-    # ファジーマッチ
-    cand, score, _ = process.extractOne(s, mapping.keys(), scorer=fuzz.token_set_ratio)
-    if score >= 90:
-        return mapping[cand]
-    # API補完
-    prompt = f"この{field_name}を業務上の標準表記にしてください：{s}"
-    std = call_chatgpt(prompt, field_name)
-    if std:
-        try:
-            with open(dict_path, 'a', encoding='utf-8', newline='') as f:
-                f.write(f"{s},{std}\n")
-            mapping[s] = std
-            return std
-        except:
-            pass
-    # ログに記録
-    log_unmatched(f"{field_name}未正規化", orig)
-    return ""
+def is_amount_header(hdr: str) -> bool:
+    h = normalize_header(hdr)
+    return any(kw in h for kw in AMOUNT_KEYWORDS) or bool(AMOUNT_PATTERN.match(h))
 
-# ─── 抽出ロジック ───
+# ─── 列名正規化 ───
+def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    rename_map: dict[str, str] = {}
+    for std_col, aliases in COLUMN_ALIASES.items():
+        norm_aliases = [normalize_header(a) for a in aliases]
+        for orig in df.columns:
+            norm_orig = normalize_header(orig)
+            if any(alias in norm_orig for alias in norm_aliases):
+                rename_map[orig] = std_col
+    return df.rename(columns=rename_map)
 
+# ─── 動的ヘッダ検出付き読み込み ───
+def read_with_dynamic_header(path: str) -> pd.DataFrame:
+    """
+    通常 header=0 で読み込み、Unnamed が多ければ header=1 で再読み込みする
+    """
+    # まず header=0 で試す
+    sheets0 = pd.read_excel(path, sheet_name=None, header=0)
+    df0 = pd.concat(sheets0.values(), ignore_index=True)
+    cols0 = list(df0.columns)
+    unnamed_count = sum(1 for c in cols0 if str(c).startswith("Unnamed"))
+    # Unnamed が半分以上なら header=1
+    if unnamed_count >= len(cols0) * 0.5:
+        sheets1 = pd.read_excel(path, sheet_name=None, header=1)
+        return pd.concat(sheets1.values(), ignore_index=True)
+    else:
+        return df0
+
+# ─── レコード抽出 ───
 def extract_items(df: pd.DataFrame, meta: dict) -> list[dict]:
-    # 各種マップをロード
-    comp_map     = load_mapping_dict(COMPANY_DICT_PATH)
-    store_map    = load_mapping_dict(STORE_DICT_PATH)
-    store_map    |= load_mapping_dict(STORE_MAPPING_PATH)
-    client_map   = load_mapping_dict(CLIENT_DICT_PATH)
-    customer_map = load_mapping_dict(CUSTOMER_DICT_PATH)
-    shipto_map   = load_mapping_dict(SHIPTO_DICT_PATH)
+    raw_cols  = list(df.columns)
+    norm_cols = [normalize_header(c) for c in raw_cols]
 
-    recs = []
-    for idx, row in df.iterrows():
-        # 金額必須
-        if pd.isna(row.get('金額')):
+    idx_qty    = next((i for i,h in enumerate(norm_cols) if '数量' in h), None)
+    idx_unit   = next((i for i,h in enumerate(norm_cols) if '単価' in h), None)
+    idx_amount = next((i for i,c in enumerate(raw_cols) if is_amount_header(c)), None)
+
+    if idx_amount is None:
+        log_unmatched('列検出エラー', f"{meta['filepath']}: 金額列が見つかりません")
+        return []
+
+    recs: list[dict] = []
+    for row_i, row in df.iterrows():
+        raw_date = row.get('日付')
+        if pd.isna(raw_date):
+            date_str = ''
+        else:
+            dt = pd.to_datetime(raw_date, errors='coerce')
+            date_str = dt.strftime('%Y/%m/%d') if not pd.isna(dt) else ''
+
+        q = try_parse(row.iloc[idx_qty])  if idx_qty  is not None else None
+        p = try_parse(row.iloc[idx_unit]) if idx_unit is not None else None
+        a = try_parse(row.iloc[idx_amount])
+
+        if a is None:
+            log_unmatched(
+                '金額欠損',
+                f"{meta['filepath']}#行{row_i}: 列={raw_cols[idx_amount]}, 値={row.iloc[idx_amount]}"
+            )
             continue
 
-        # 日付補完（NaT → API推定 → 空欄 or yyyy/MM/dd）
-        dt = row.get('日付')
-        if pd.isna(dt):
-            rec_dict = row.to_dict()
-            prompt = (
-                "以下のレコード全体を参考に、YYYY/MM/DD 形式で日付を１つだけ返してください。\n"
-                f"{rec_dict}"
+        if q is not None and p is not None and pd.isna(row.iloc[idx_amount]):
+            a = q * p
+        if q is not None and a is not None and p is None:
+            p = a / q if q else None
+        if p is not None and a is not None and q is None:
+            q = a / p if p else None
+        if None not in (q, p, a) and abs(q * p - a) / max(a, 1) > 0.01:
+            log_unmatched(
+                '不整合',
+                f"{meta['filepath']}#行{row_i}: {q}×{p} ≠ {a}"
             )
-            resp = call_chatgpt(prompt, "日付推定")
-            try:
-                dt_parsed = pd.to_datetime(resp, format='%Y/%m/%d', errors='coerce')
-            except:
-                dt_parsed = pd.NaT
-            if pd.isna(dt_parsed):
-                date_str = ""
-                log_unmatched("日付推定失敗", f"{meta.get('filepath')}#行{idx} → {resp}")
-            else:
-                date_str = dt_parsed.strftime('%Y/%m/%d')
-                # ヘッダー揺れ元が分かれば辞書に追加しても良い
-        else:
-            date_str = dt.strftime('%Y/%m/%d')
 
-        # 名寄せ対象フィールド
-        company   = normalize_field(str(row.get('企業','')),   comp_map,     COMPANY_DICT_PATH, "企業名")
-        store     = normalize_field(str(row.get('店舗','')),   store_map,    STORE_DICT_PATH,   "店舗名")
-        client    = normalize_field(str(row.get('ご依頼主','')), client_map,  CLIENT_DICT_PATH, "ご依頼主")
-        customer  = normalize_field(str(row.get('お客様名','')), customer_map,CUSTOMER_DICT_PATH,"お客様名")
-        shipto    = normalize_field(str(row.get('発送先名','')), shipto_map,  SHIPTO_DICT_PATH, "発送先名")
-
-        # 抽出対象：商品名・作業項目
-        prod = clean_string(row.get('商品名',''))
-        work = clean_string(row.get('作業項目',''))
+        company = normalize_field(str(row.get('企業','')), {}, '', '企業名')
+        store   = normalize_field(str(row.get('店舗','')), {}, '', '店舗名')
+        item    = clean_string(row.get('作業項目/商品名', ''))
 
         recs.append({
-            '部署':     meta['部署'],
-            '元請け':   meta['元請け'],
-            '日付':     date_str,
-            '分類':     row.get('分類','不明'),
-            '企業名':   company,
-            '店舗名':   store,
-            'ご依頼主': client,
-            'お客様名': customer,
-            '発送先名': shipto,
-            '商品名':   prod,
-            '作業項目': work,
-            '数量':     row.get('数量',0),
-            '単価':     row.get('単価',0),
-            '金額':     row.get('金額',0)
+            '部署':             meta.get('部署',''),
+            '元請け':           meta.get('元請け',''),
+            '日付':             date_str,
+            '企業名':           company,
+            '店舗名':           store,
+            '作業項目/商品名':  item,
+            '数量':             q,
+            '単価':             p,
+            '金額':             a
         })
+
     return recs
 
 # ─── メイン処理 ───
-
 def handle_new_file(filepath: str) -> None:
     meta = parse_filename(filepath)
     if 'エラー' in meta:
         log_unmatched('ファイル名', filepath)
         return
-    ym = meta['年月']
+
+    ym   = meta['年月']
+    year = ym.split('-')[0]
     print(f"[REGEN] 全社再生成開始: 年月={ym}")
 
-    # 1) ファイル収集
-    candidates = []
+    # 1) 対象ファイル収集
+    candidates: list[tuple[str, dict]] = []
     for base in (WATCH_DIR, PROCESSED_DIR):
         for root, _, files in os.walk(base):
             for fn in files:
-                if not fn.lower().endswith(VALID_EXTENSIONS): continue
+                if not fn.lower().endswith(VALID_EXTENSIONS):
+                    continue
                 m = parse_filename(fn)
-                if 'エラー' in m or m.get('年月')!=ym: continue
-                candidates.append((os.path.join(root,fn), m))
+                if 'エラー' in m or m.get('年月') != ym:
+                    continue
+                candidates.append((os.path.join(root, fn), m))
     print(f"[DEBUG] 対象ファイル数: {len(candidates)}")
 
-    all_records = []
-    for path, meta in candidates:
+    all_records: list[dict] = []
+    for path, m in candidates:
         try:
-            # 読み込み
+            # データ読み込み
             if path.lower().endswith('.csv'):
                 df = pd.read_csv(path)
             else:
-                sheets = pd.read_excel(path, sheet_name=None)
-                df = pd.concat([normalize_columns(s) for s in sheets.values()], ignore_index=True)
+                df = read_with_dynamic_header(path)
+
+            # ヘッダ強化正規化＆エイリアスマッチ
+            df.columns = [normalize_header(c) for c in df.columns]
             df = normalize_columns(df)
-            # 日付型
-            if '日付' in df.columns:
-                df['日付'] = pd.to_datetime(df['日付'], errors='coerce')
+
+            # 部分一致による強制リネーム（旧ロジック併用）
+            keywords = [normalize_header(k) for k in COLUMN_ALIASES.get('作業項目/商品名', [])]
+            for orig in list(df.columns):
+                if any(kw in orig for kw in keywords):
+                    df.rename(columns={orig: '作業項目/商品名'}, inplace=True)
+                    break
+
+            # 日付列自動検出
+            date_cols = [c for c in df.columns if c.endswith('日')]
+            if date_cols:
+                for c in date_cols:
+                    df[c] = pd.to_datetime(df[c], errors='coerce')
+                if '日付' not in df.columns:
+                    df = df.rename(columns={date_cols[0]: '日付'})
             else:
-                log_unmatched('列','日付が存在しません')
-            meta['filepath'] = path
-            all_records.extend(extract_items(df, meta))
-            # アーカイブ
+                log_unmatched('列検出エラー', f"{path}: 日付列が見つかりません")
+
+            m['filepath'] = path
+            extract_list = extract_items(df, m)
+            print(f"[DEBUG] {os.path.basename(path)} → {len(extract_list)} 件抽出")
+            all_records.extend(extract_list)
+
             from watch_folder import archive_file
             archive_file(path, success=True)
+
         except Exception as e:
             log_unmatched('読込エラー', f"{path}: {e}")
             from watch_folder import archive_file
@@ -205,35 +264,65 @@ def handle_new_file(filepath: str) -> None:
     df_final = pd.DataFrame(all_records)
     print(f"[EXTRACT] 総レコード数: {len(df_final)}")
 
-    # 列幅指定
+
+    # 列幅設定
     col_widths = {
-        '部署':8,'元請け':20,'日付':20,'分類':8,
-        '企業名':20,'店舗名':45,'ご依頼主':20,'お客様名':20,'発送先名':20,
-        '商品名':55,'作業項目':55,'数量':8,'単価':15,'金額':20
+        '部署':8, '元請け':20, '日付':20,
+        '企業名':20, '店舗名':45, '作業項目/商品名':60,
+        '数量':8, '単価':15, '金額':20
     }
 
-    # 部署別出力
+    # ── 月次部署別出力 ──
     for dept, grp in df_final.groupby('部署'):
-        out = os.path.join(OUTPUT_DIR, dept); os.makedirs(out, exist_ok=True)
-        base = f"{ym}_records"
-        csv_p  = os.path.join(out, f"{dept}_{base}.csv")
-        xlsx_p = os.path.join(out, f"{dept}_{base}.xlsx")
-        grp.to_csv(csv_p, index=False, encoding='utf-8-sig')
-        with pd.ExcelWriter(xlsx_p, engine='xlsxwriter') as w:
+        out_dir = os.path.join(OUTPUT_DIR, dept)
+        os.makedirs(out_dir, exist_ok=True)
+        base_month = f"{ym}_records"
+        grp.to_csv(os.path.join(out_dir, f"{dept}_{base_month}.csv"),
+                   index=False, encoding='utf-8-sig')
+        with pd.ExcelWriter(os.path.join(out_dir, f"{dept}_{base_month}.xlsx"),
+                            engine='xlsxwriter') as w:
             grp.to_excel(w, index=False, sheet_name='Sheet1')
             ws = w.sheets['Sheet1']
-            for i,col in enumerate(grp.columns):
-                ws.set_column(i,i,col_widths.get(col,15))
+            for i, col in enumerate(grp.columns):
+                ws.set_column(i, i, col_widths.get(col, 15))
 
-    # 全社統合
-    all_out = os.path.join(OUTPUT_DIR,'_全社統合'); os.makedirs(all_out, exist_ok=True)
-    csv_a  = os.path.join(all_out, f"全社統合_{ym}_records.csv")
-    xlsx_a = os.path.join(all_out, f"全社統合_{ym}_records.xlsx")
-    df_final.to_csv(csv_a, index=False, encoding='utf-8-sig')
-    with pd.ExcelWriter(xlsx_a, engine='xlsxwriter') as w:
+    # ── 月次全社統合出力 ──
+    all_mon = os.path.join(OUTPUT_DIR, '_全社統合')
+    os.makedirs(all_mon, exist_ok=True)
+    df_final.to_csv(os.path.join(all_mon, f"全社統合_{ym}_records.csv"),
+                    index=False, encoding='utf-8-sig')
+    with pd.ExcelWriter(os.path.join(all_mon, f"全社統合_{ym}_records.xlsx"),
+                        engine='xlsxwriter') as w:
         df_final.to_excel(w, index=False, sheet_name='Sheet1')
         ws = w.sheets['Sheet1']
-        for i,col in enumerate(df_final.columns):
-            ws.set_column(i,i,col_widths.get(col,15))
+        for i, col in enumerate(df_final.columns):
+            ws.set_column(i, i, col_widths.get(col, 15))
 
-    print(f"[DONE] 全社再生成完了: {ym}")
+    # ── 年次部署別出力 ──
+    for dept, grp in df_final.groupby('部署'):
+        year_dir = os.path.join(OUTPUT_DIR, dept, 'yearly')
+        os.makedirs(year_dir, exist_ok=True)
+        base_year = f"{dept}_{year}_records"
+        grp.to_csv(os.path.join(year_dir, f"{base_year}.csv"),
+                   index=False, encoding='utf-8-sig')
+        with pd.ExcelWriter(os.path.join(year_dir, f"{base_year}.xlsx"),
+                            engine='xlsxwriter') as w:
+            grp.to_excel(w, index=False, sheet_name='Sheet1')
+            ws = w.sheets['Sheet1']
+            for i, col in enumerate(grp.columns):
+                ws.set_column(i, i, col_widths.get(col, 15))
+
+    # ── 年次全社統合出力 ──
+    company_year_dir = os.path.join(OUTPUT_DIR, '_全社統合', 'yearly')
+    os.makedirs(company_year_dir, exist_ok=True)
+    df_final.to_csv(os.path.join(company_year_dir, f"全社統合_{year}_records.csv"),
+                    index=False, encoding='utf-8-sig')
+    with pd.ExcelWriter(os.path.join(company_year_dir, f"全社統合_{year}_records.xlsx"),
+                        engine='xlsxwriter') as w:
+        df_final.to_excel(w, index=False, sheet_name='Sheet1')
+        ws = w.sheets['Sheet1']
+        for i, col in enumerate(df_final.columns):
+            ws.set_column(i, i, col_widths.get(col, 15))
+
+    print(f"[DONE] 全社再生成完了: 年月={ym}／年次完了")
+
