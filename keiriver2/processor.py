@@ -1,4 +1,4 @@
-import os
+import os 
 import re
 import unicodedata
 import pandas as pd
@@ -6,6 +6,7 @@ import csv
 from datetime import datetime
 import openai
 from typing import List
+
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 def call_chatgpt_api(prompt: str,
@@ -84,7 +85,7 @@ except ImportError:
         try:
             y, m = re.match(r'(\d{4})年(\d{1,2})月', ym_jp).groups()
             ym = f"{y}-{int(m):02d}"
-            return {'filepath': fp, '部署': dept, '元請け': contractor, '年月': ym}
+            return {'filepath': fp, '部署': dept, '下請け': contractor, '年月': ym}
         except Exception:
             pass
         return {'filepath': fp, 'エラー': 'ファイル名パース失敗'}
@@ -369,7 +370,7 @@ def extract_items(df: pd.DataFrame, meta: dict) -> list[dict]:
 
         recs.append({
             '部署':             meta.get('部署',''),
-            '元請け':           meta.get('元請け',''),
+            '下請け':           meta.get('下請け',''),
             '日付':             date_str,
             #'企業名':           company,
             '店舗名':           store,
@@ -380,144 +381,236 @@ def extract_items(df: pd.DataFrame, meta: dict) -> list[dict]:
         })
 
     return recs
+def filter_duplicates_by_basename(file_paths: list[str]) -> set[str]:
+    """
+    同一 basename をもつファイルが複数ある場合、
+    更新日時最新の１件だけ残し、その basename の最新パスを返す。
+    """
+    groups: dict[str, list[str]] = {}
+    for p in file_paths:
+        bn = os.path.basename(p)
+        groups.setdefault(bn, []).append(p)
+
+    kept: set[str] = set()
+    for bn, paths in groups.items():
+        # 単一ならそのまま
+        if len(paths) == 1:
+            kept.add(paths[0])
+        else:
+            # 更新日時最新を選択
+            latest = max(paths, key=lambda x: os.path.getmtime(x))
+            kept.add(latest)
+            for other in paths:
+                if other != latest:
+                    log_unmatched(
+                        '重複ファイル',
+                        f"{other} は {latest} と同名のためスキップ"
+                    )
+    return kept
 
 # ─── メイン処理 ───
 def handle_new_file(filepath: str) -> None:
+    from watch_folder import archive_file  # アーカイブ用
+
+    # ① ファイル名パース
     meta = parse_filename(filepath)
     if 'エラー' in meta:
         log_unmatched('ファイル名', filepath)
         return
 
-    ym   = meta['年月']
-    year = ym.split('-')[0]
+    # ② 対象年月・対象年
+    ym   = meta['年月']             # e.g. "2025-02"
+    year = ym.split('-')[0]         # e.g. "2025"
     print(f"[REGEN] 全社再生成開始: 年月={ym}")
 
-    # 1) 対象ファイル収集
-    seen_paths = set()
-    candidates: list[tuple[str, dict]] = []
+    # ③ 候補ファイル収集（WATCH_DIR + PROCESSED_DIR）
+    candidates_month: list[tuple[str, dict]] = []
+    candidates_year:  list[tuple[str, dict]] = []
     for base in (WATCH_DIR, PROCESSED_DIR):
         for root, _, files in os.walk(base):
             for fn in files:
-                if not fn.lower().endswith(VALID_EXTENSIONS):
-                    continue
                 fullpath = os.path.join(root, fn)
-                if fullpath in seen_paths:
-                    continue
                 m = parse_filename(fullpath)
-                if 'エラー' in m or m.get('年月') != ym:
+                if 'エラー' in m:
                     continue
-                seen_paths.add(fullpath)
-                candidates.append((os.path.join(root, fn), m))
-    print(f"[DEBUG] 対象ファイル数: {len(candidates)}")
+                if m.get('年月') == ym:
+                    candidates_month.append((fullpath, m))
+                if m.get('年月', '').split('-',1)[0] == year:
+                    candidates_year.append((fullpath, m))
 
-    all_records: list[dict] = []
-    for path, m in candidates:
+    # ④ 月次：basename 重複排除 → 抽出 → アーカイブ
+    month_paths = [p for p, _ in candidates_month]
+    kept_month = set(filter_duplicates_by_basename(month_paths))
+    all_records_month: list[dict] = []
+    for path, m in candidates_month:
+        if path not in kept_month:
+            continue
+        m['filepath'] = path
         try:
-            # データ読み込み
-            if path.lower().endswith('.csv'):
-                df = pd.read_csv(path)
-            else:
-                df = read_with_dynamic_header(path)
-
-            # ヘッダ強化正規化＆エイリアスマッチ
+            df = pd.read_csv(path) if path.lower().endswith('.csv') else read_with_dynamic_header(path)
             df.columns = [normalize_header(c) for c in df.columns]
             df = normalize_columns(df)
-
-            # 部分一致による強制リネーム（旧ロジック併用）
-            keywords = [normalize_header(k) for k in COLUMN_ALIASES.get('作業項目/商品名', [])]
-            for orig in list(df.columns):
-                if any(kw in orig for kw in keywords):
-                    df.rename(columns={orig: '作業項目/商品名'}, inplace=True)
-                    break
-
-            # 日付列自動検出
-            date_cols = [c for c in df.columns if c.endswith('日')]
-            if date_cols:
-                for c in date_cols:
-                    df[c] = pd.to_datetime(df[c], errors='coerce')
-                if '日付' not in df.columns:
-                    df = df.rename(columns={date_cols[0]: '日付'})
-            else:
-                log_unmatched('列検出エラー', f"{path}: 日付列が見つかりません")
-
-            m['filepath'] = path
-            extract_list = extract_items(df, m)
-            print(f"[DEBUG] {os.path.basename(path)} → {len(extract_list)} 件抽出")
-            all_records.extend(extract_list)
-
-            from watch_folder import archive_file
+            all_records_month.extend(extract_items(df, m))
             archive_file(path, success=True)
-
         except Exception as e:
             log_unmatched('読込エラー', f"{path}: {e}")
-            from watch_folder import archive_file
             archive_file(path, success=False)
 
-    if not all_records:
-        print("[ERROR] 処理可能なレコードがありません")
-        return
+    df_month = pd.DataFrame(all_records_month)
+    print(f"[EXTRACT-MONTH] 総レコード数: {len(df_month)} 件")
 
-    df_final = pd.DataFrame(all_records)
-    print(f"[EXTRACT] 総レコード数: {len(df_final)}")
+    # ⑤ 年次：移動済みパス補正 → basename 重複排除 → 抽出（アーカイブ不要）
+    corrected = []
+    for path, m in candidates_year:
+        if not os.path.exists(path):
+            alt = os.path.join(PROCESSED_DIR, m['部署'], os.path.basename(path))
+            if os.path.exists(alt):
+                path = alt
+        corrected.append((path, m))
 
+    year_paths = [p for p, _ in corrected]
+    kept_year = set(filter_duplicates_by_basename(year_paths))
+    all_records_year: list[dict] = []
+    for path, m in corrected:
+        if path not in kept_year:
+            continue
+        m['filepath'] = path
+        try:
+            df = pd.read_csv(path) if path.lower().endswith('.csv') else read_with_dynamic_header(path)
+            df.columns = [normalize_header(c) for c in df.columns]
+            df = normalize_columns(df)
+            all_records_year.extend(extract_items(df, m))
+        except Exception as e:
+            log_unmatched('読込エラー', f"{path}: {e}")
 
-    # 列幅設定
+    df_year = pd.DataFrame(all_records_year)
+    print(f"[EXTRACT-YEAR] 総レコード数: {len(df_year)} 件")
+
+    # ⑥ 出力設定（列幅マップ）
     col_widths = {
-        '部署':8, '元請け':20, '日付':20,
-        '企業名':20, '店舗名':45, '作業項目/商品名':60,
-        '数量':8, '単価':15, '金額':20
+        '部署': 8, '下請け': 20, '日付': 20,
+        '店舗名': 45, '作業項目/商品名': 60,
+        '数量': 8, '単価': 15, '金額': 20
     }
 
-    # ── 月次部署別出力 ──
-    for dept, grp in df_final.groupby('部署'):
+    # ⑥-1) 月次部署別出力
+    base_month = f"{ym}_records"
+    for dept, grp in df_month.groupby('部署'):
         out_dir = os.path.join(OUTPUT_DIR, dept)
         os.makedirs(out_dir, exist_ok=True)
-        base_month = f"{ym}_records"
-        grp.to_csv(os.path.join(out_dir, f"{dept}_{base_month}.csv"),
-                   index=False, encoding='utf-8-sig')
-        with pd.ExcelWriter(os.path.join(out_dir, f"{dept}_{base_month}.xlsx"),
-                            engine='xlsxwriter') as w:
-            grp.to_excel(w, index=False, sheet_name='Sheet1')
-            ws = w.sheets['Sheet1']
-            for i, col in enumerate(grp.columns):
-                ws.set_column(i, i, col_widths.get(col, 15))
+        subs = grp.groupby('下請け', as_index=False)[['数量','金額']].sum()
+        subs['作業項目/商品名'] = '小計'
+        total = {
+            '部署': dept, '下請け': '', '日付': '',
+            '店舗名': '', '作業項目/商品名': '合計',
+            '数量': grp['数量'].sum(), '単価': '', '金額': grp['金額'].sum()
+        }
+        grp_ext = pd.concat([grp, subs, pd.DataFrame([total])], ignore_index=True)
 
-    # ── 月次全社統合出力 ──
+        grp_ext.to_csv(
+            os.path.join(out_dir, f"{dept}_{base_month}.csv"),
+            index=False, encoding='utf-8-sig'
+        )
+        with pd.ExcelWriter(
+            os.path.join(out_dir, f"{dept}_{base_month}.xlsx"),
+            engine='xlsxwriter'
+        ) as w:
+            grp_ext.to_excel(w, index=False, sheet_name='Sheet1')
+            ws, wb = w.sheets['Sheet1'], w.book
+            fmt = wb.add_format({'num_format':'#,##0'})
+            for i, col in enumerate(grp_ext.columns):
+                ws.set_column(i, i, col_widths.get(col, 15), fmt if col == '金額' else None)
+            ws.autofilter(0, 0, len(grp_ext), len(grp_ext.columns)-1)
+
+    # ⑥-2) 月次全社統合出力
     all_mon = os.path.join(OUTPUT_DIR, '_全社統合')
     os.makedirs(all_mon, exist_ok=True)
-    df_final.to_csv(os.path.join(all_mon, f"全社統合_{ym}_records.csv"),
-                    index=False, encoding='utf-8-sig')
-    with pd.ExcelWriter(os.path.join(all_mon, f"全社統合_{ym}_records.xlsx"),
-                        engine='xlsxwriter') as w:
-        df_final.to_excel(w, index=False, sheet_name='Sheet1')
-        ws = w.sheets['Sheet1']
-        for i, col in enumerate(df_final.columns):
-            ws.set_column(i, i, col_widths.get(col, 15))
+    subs_c = df_month.groupby('下請け',   as_index=False)[['数量','金額']].sum().assign(
+        部署='', 日付='', 単価='', 店舗名='', **{'作業項目/商品名':'会社小計'}
+    )
+    subs_d = df_month.groupby('部署',    as_index=False)[['数量','金額']].sum().assign(
+        下請け='', 日付='', 単価='', 店舗名='', **{'作業項目/商品名':'部署小計'}
+    )
+    total_all = {
+        '部署':'','下請け':'','日付':'',
+        '店舗名':'','作業項目/商品名':'全社合計',
+        '数量': df_month['数量'].sum(), '単価':'', '金額': df_month['金額'].sum()
+    }
+    df_ext = pd.concat([df_month, subs_c, subs_d, pd.DataFrame([total_all])], ignore_index=True)
 
-    # ── 年次部署別出力 ──
-    for dept, grp in df_final.groupby('部署'):
+    df_ext.to_csv(
+        os.path.join(all_mon, f"全社統合_{ym}_records.csv"),
+        index=False, encoding='utf-8-sig'
+    )
+    with pd.ExcelWriter(
+        os.path.join(all_mon, f"全社統合_{ym}_records.xlsx"),
+        engine='xlsxwriter'
+    ) as w:
+        df_ext.to_excel(w, index=False, sheet_name='Sheet1')
+        ws, wb = w.sheets['Sheet1'], w.book
+        fmt = wb.add_format({'num_format':'#,##0'})
+        for i, col in enumerate(df_ext.columns):
+            ws.set_column(i, i, col_widths.get(col, 15), fmt if col == '金額' else None)
+        ws.autofilter(0, 0, len(df_ext), len(df_ext.columns)-1)
+
+    # ⑥-3) 年次部署別出力
+    for dept, grp in df_year.groupby('部署'):
         year_dir = os.path.join(OUTPUT_DIR, dept, 'yearly')
         os.makedirs(year_dir, exist_ok=True)
         base_year = f"{dept}_{year}_records"
-        grp.to_csv(os.path.join(year_dir, f"{base_year}.csv"),
-                   index=False, encoding='utf-8-sig')
-        with pd.ExcelWriter(os.path.join(year_dir, f"{base_year}.xlsx"),
-                            engine='xlsxwriter') as w:
-            grp.to_excel(w, index=False, sheet_name='Sheet1')
-            ws = w.sheets['Sheet1']
-            for i, col in enumerate(grp.columns):
-                ws.set_column(i, i, col_widths.get(col, 15))
+        subs = grp.groupby('下請け', as_index=False)[['数量','金額']].sum()
+        subs['作業項目/商品名'] = '部署小計'
+        total = {
+            '部署': dept, '下請け': '', '日付': '',
+            '店舗名': '', '作業項目/商品名':'年次合計',
+            '数量': grp['数量'].sum(), '単価': '', '金額': grp['金額'].sum()
+        }
+        grp_ext = pd.concat([grp, subs, pd.DataFrame([total])], ignore_index=True)
 
-    # ── 年次全社統合出力 ──
+        grp_ext.to_csv(
+            os.path.join(year_dir, f"{base_year}.csv"),
+            index=False, encoding='utf-8-sig'
+        )
+        with pd.ExcelWriter(
+            os.path.join(year_dir, f"{base_year}.xlsx"),
+            engine='xlsxwriter'
+        ) as w:
+            grp_ext.to_excel(w, index=False, sheet_name='Sheet1')
+            ws, wb = w.sheets['Sheet1'], w.book
+            fmt = wb.add_format({'num_format':'#,##0'})
+            for i, col in enumerate(grp_ext.columns):
+                ws.set_column(i, i, col_widths.get(col, 15), fmt if col == '金額' else None)
+            ws.autofilter(0, 0, len(grp_ext), len(grp_ext.columns)-1)
+
+    # ⑥-4) 年次全社統合出力
     company_year_dir = os.path.join(OUTPUT_DIR, '_全社統合', 'yearly')
     os.makedirs(company_year_dir, exist_ok=True)
-    df_final.to_csv(os.path.join(company_year_dir, f"全社統合_{year}_records.csv"),
-                    index=False, encoding='utf-8-sig')
-    with pd.ExcelWriter(os.path.join(company_year_dir, f"全社統合_{year}_records.xlsx"),
-                        engine='xlsxwriter') as w:
-        df_final.to_excel(w, index=False, sheet_name='Sheet1')
-        ws = w.sheets['Sheet1']
-        for i, col in enumerate(df_final.columns):
-            ws.set_column(i, i, col_widths.get(col, 15))
+    subs_cy = df_year.groupby('下請け', as_index=False)[['数量','金額']].sum().assign(
+        部署='', 日付='', 単価='', 店舗名='', **{'作業項目/商品名':'会社小計'}
+    )
+    subs_dy = df_year.groupby('部署',    as_index=False)[['数量','金額']].sum().assign(
+        下請け='', 日付='', 単価='', 店舗名='', **{'作業項目/商品名':'部署小計'}
+    )
+    total_yr = {
+        '部署':'','下請け':'','日付':'',
+        '店舗名':'','作業項目/商品名':'年次合計',
+        '数量': df_year['数量'].sum(), '単価':'', '金額': df_year['金額'].sum()
+    }
+    df_yr_ext = pd.concat([df_year, subs_cy, subs_dy, pd.DataFrame([total_yr])], ignore_index=True)
+
+    df_yr_ext.to_csv(
+        os.path.join(company_year_dir, f"全社統合_{year}_records.csv"),
+        index=False, encoding='utf-8-sig'
+    )
+    with pd.ExcelWriter(
+        os.path.join(company_year_dir, f"全社統合_{year}_records.xlsx"),
+        engine='xlsxwriter'
+    ) as w:
+        df_yr_ext.to_excel(w, index=False, sheet_name='Sheet1')
+        ws, wb = w.sheets['Sheet1'], w.book
+        fmt = wb.add_format({'num_format':'#,##0'})
+        for i, col in enumerate(df_yr_ext.columns):
+            ws.set_column(i, i, col_widths.get(col, 15), fmt if col == '金額' else None)
+        ws.autofilter(0, 0, len(df_yr_ext), len(df_yr_ext.columns)-1)
 
     print(f"[DONE] 全社再生成完了: 年月={ym}／年次完了")

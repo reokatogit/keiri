@@ -21,7 +21,7 @@ def parse_filename(filename):
         month = int(match.group(4))
         return {
             '部署': department,
-            '元請け': client,
+            '下請け': client,
             '年': year,
             '月': month,
             '年月': f"{year}-{month:02d}"
