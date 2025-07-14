@@ -1,3 +1,4 @@
+#processor.py 
 import os 
 import re
 import unicodedata
@@ -189,10 +190,10 @@ def try_parse(s) -> float | None:
 
 # ─── 金額列判定 ───
 AMOUNT_KEYWORDS = [
-    '金額','合計額','total','amount',
+    '売上','売り上げ','金額','合計額','total','amount',
     '売上高','sales','revenue',
     '請求金額','ご請求金額','請求額',
-    '作業金額','工賃','売上','売り上げ'
+    '作業金額','工賃',
     '手数料','commission','handling_fee',
     '運賃','送料','freight','shipping'
 ]
@@ -200,70 +201,108 @@ AMOUNT_PATTERN = re.compile(r'.*費$')
 
 def is_amount_header(hdr: str) -> bool:
     h = normalize_header(hdr)
+    # 1) 「売上」「売り上げ」で完全一致
+    if h in ('売上', '売り上げ'):
+        return True
+    # 2) それ以外はキーワード部分一致 or 「～費」で終わるパターン
     return any(kw in h for kw in AMOUNT_KEYWORDS) or bool(AMOUNT_PATTERN.match(h))
-
 # ─── 列名正規化 ───
 def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     rename_map: dict[str, str] = {}
+    already_mapped: set[str] = set()
+
+    # 優先度の高い列名からチェックするために、aliases を順序付きで扱う
     for std_col, aliases in COLUMN_ALIASES.items():
         norm_aliases = [normalize_header(a) for a in aliases]
+        # 明示的に「完全一致を優先」、その後に「部分一致」
         for orig in df.columns:
             norm_orig = normalize_header(orig)
-            if any(alias in norm_orig for alias in norm_aliases):
+
+            # 完全一致
+            if norm_orig in norm_aliases and std_col not in already_mapped:
                 rename_map[orig] = std_col
+                already_mapped.add(std_col)
+
+        for orig in df.columns:
+            norm_orig = normalize_header(orig)
+            # 部分一致（あいまいマッチ） ← 完全一致がすでにされていたらスキップ
+            if any(alias in norm_orig for alias in norm_aliases) and std_col not in already_mapped:
+                rename_map[orig] = std_col
+                already_mapped.add(std_col)
+
     return df.rename(columns=rename_map)
 
+
+
 # ─── 動的ヘッダ検出付き読み込み ───
-def read_with_dynamic_header(path: str) -> pd.DataFrame:
-    """
-    通常 header=0 で読み込み、Unnamed が多ければ header=1 で再読み込みする
-    """
-    # まず header=0 で試す
-    sheets0 = pd.read_excel(path, sheet_name=None, header=0)
-    df0 = pd.concat(sheets0.values(), ignore_index=True)
-    cols0 = list(df0.columns)
-    unnamed_count = sum(1 for c in cols0 if str(c).startswith("Unnamed"))
-    # Unnamed が半分以上なら header=1
-    if unnamed_count >= len(cols0) * 0.5:
-        sheets1 = pd.read_excel(path, sheet_name=None, header=1)
-        return pd.concat(sheets1.values(), ignore_index=True)
-    else:
-        return df0
+def read_with_dynamic_header(path: str, sheet_name=None) -> pd.DataFrame:
+    dfs = []
+    with pd.ExcelFile(path) as xls:
+        sheets = [sheet_name] if sheet_name else xls.sheet_names
+        for sheet in sheets:
+            df0 = pd.read_excel(xls, sheet_name=sheet, header=0)
+            cols0 = list(df0.columns)
+            unnamed = sum(1 for c in cols0 if str(c).startswith("Unnamed"))
+
+            # ログつけてどっち使ってるか明示
+            if unnamed >= len(cols0) * 0.4:
+                df = pd.read_excel(xls, sheet_name=sheet, header=1)
+                log_unmatched('ヘッダ切替', f"{path}@{sheet}: header=1 に切替")
+            else:
+                df = df0
+                log_unmatched('ヘッダ切替', f"{path}@{sheet}: header=0 のまま")
+
+            dfs.append(df)
+
+    return pd.concat(dfs, ignore_index=True, sort=False)
+
+
 
 def parse_flexible_date(raw_date, year_hint: str) -> str:
-    """
-    raw_date: 元セル値
-    year_hint: meta['年月'] から取り出した 'YYYY' 部分
-    戻り値: 'YYYY/MM/DD' 形式の文字列、パース失敗時は ''
-    """
     if pd.isna(raw_date):
         return ''
     s = str(raw_date).strip()
-    # 1) 「1月9日」「12月31日」パターン
-    m = re.match(r'^(\d{1,2})月(\d{1,2})日$', 
-                 s
-    )
+
+    # 1) 「1月9日」「12月31日」
+    m = re.match(r'^(\d{1,2})月(\d{1,2})日$', s)
     if m:
         mm, dd = map(int, m.groups())
         return f"{year_hint}/{mm:02d}/{dd:02d}"
-    # 2) 「1/9」「12/31」「1-9」パターン
+
+    # 2) 「1/9」「12/31」「1-9」
     m = re.match(r'^(\d{1,2})[\/\-](\d{1,2})$', s)
     if m:
         mm, dd = map(int, m.groups())
         return f"{year_hint}/{mm:02d}/{dd:02d}"
-    # 3) 「1月9」「12月31」パターン（「日」だけない）
+
+    # 3) 「1月9」「12月31」
     m = re.match(r'^(\d{1,2})月(\d{1,2})$', s)
     if m:
         mm, dd = map(int, m.groups())
         return f"{year_hint}/{mm:02d}/{dd:02d}"
-    # 4) 「2025/1/9」など通常の年月日
+
+    # 4) 「20240109」 ← ここを追加！！
+    m = re.match(r'^(\d{4})(\d{2})(\d{2})$', s)
+    if m:
+        y, m_, d = map(int, m.groups())
+        return f"{y}/{m_:02d}/{d:02d}"
+
+    # 5) 「2024年1月9日」
+    m = re.match(r'^(\d{4})年(\d{1,2})月(\d{1,2})日$', s)
+    if m:
+        y, m_, d = map(int, m.groups())
+        return f"{y}/{m_:02d}/{d:02d}"
+
+    # 6) fallback: pandas にまかせる
     try:
         dt = pd.to_datetime(s, errors='coerce')
         if not pd.isna(dt):
             return dt.strftime('%Y/%m/%d')
     except:
         pass
+
     return ''
+
 def normalize(col: str) -> str:
     s = col.lower()
     s = s.translate(str.maketrans({'　':' ', '（':'(', '）':')'}))
@@ -313,17 +352,24 @@ def extract_items(df: pd.DataFrame, meta: dict) -> list[dict]:
     raw_cols  = list(df.columns)
     norm_cols = [normalize_header(c) for c in raw_cols]
 
-    idx_qty = next(
-        (
-            i for i, h in enumerate(norm_cols)
-            if h.endswith('数量')  # 末尾が「数量」
-        ),
-        None
-    )
-    idx_unit   = next((i for i,h in enumerate(norm_cols) if '単価' in h), None)
-    idx_amount = next((i for i,c in enumerate(raw_cols) if is_amount_header(c)), None)
+    idx_qty  = next((i for i, h in enumerate(norm_cols) if h.endswith('数量')), None)
+    idx_unit = next((i for i, h in enumerate(norm_cols) if '単価' in h), None)
+    priority_amounts = ['合計', '合計額', '請求金額', '金額']
+    amount_idxs = [
+    i for i, c in enumerate(raw_cols)
+    if normalize_header(c) in [normalize_header(p) for p in priority_amounts]]
 
-    if idx_amount is None:
+
+    if not amount_idxs:
+     amount_idxs = [i for i, c in enumerate(raw_cols) if is_amount_header(c)]
+ 
+    if not amount_idxs:
+     log_unmatched('列検出エラー', f"{meta['filepath']}: 金額列が見つかりません")
+    return []
+
+    # ─ 金額列：複数対応（合算）─
+    amount_idxs = [i for i, c in enumerate(raw_cols) if is_amount_header(c)]
+    if not amount_idxs:
         log_unmatched('列検出エラー', f"{meta['filepath']}: 金額列が見つかりません")
         return []
 
@@ -333,54 +379,50 @@ def extract_items(df: pd.DataFrame, meta: dict) -> list[dict]:
         year_hint = meta.get('年月', '').split('-')[0]  # 例: "2025"
         date_str = parse_flexible_date(raw_date, year_hint)
         if not date_str:
-            # date_str が空ならログ出力してスキップ
             log_unmatched(
                 '日付抽出失敗',
                 f"{meta['filepath']}#行{row_i}: 元値={raw_date}"
             )
             continue
-        q = try_parse(row.iloc[idx_qty])  if idx_qty  is not None else None
-        p = try_parse(row.iloc[idx_unit]) if idx_unit is not None else None
-        a = try_parse(row.iloc[idx_amount])
-        if p is not None:
-            p = round(p, 1)
+
+        # 数量
+        if idx_qty is None or df.iloc[:, idx_qty].isna().all():
+            q = 1
+        else:
+            q = try_parse(row.iloc[idx_qty])
+
+        # 単価（空白固定）
+        p = None
+
+        # 金額（複数列の合算）
+        a_list = [try_parse(row.iloc[i]) for i in amount_idxs]
+        a_list = [v for v in a_list if v is not None]
+        a = sum(a_list) if a_list else None
+
         if a is None:
             log_unmatched(
                 '金額欠損',
-                f"{meta['filepath']}#行{row_i}: 列={raw_cols[idx_amount]}, 値={row.iloc[idx_amount]}"
+                f"{meta['filepath']}#行{row_i}: 金額列のいずれも無効"
             )
             continue
 
-        #if q is not None and p is not None and pd.isna(row.iloc[idx_amount]):
-            #a = q * p
-        #if q is not None and a is not None and p is None:
-            #p = a / q if q else None
-        #if p is not None and a is not None and q is None:
-            #q = a / p if p else None
-        #if None not in (q, p, a) and abs(q * p - a) / max(a, 1) > 0.01:
-            #log_unmatched(
-                #'不整合',
-                #f"{meta['filepath']}#行{row_i}: {q}×{p} ≠ {a}"
-            #)
-
-        #company = normalize_field(str(row.get('企業','')), {}, '', '企業名')
         raw_store = pick_store_column(row, raw_cols)
         store = normalize_field(raw_store, {}, MAPPING_STORE_PATH, '店舗名')
-        item    = clean_string(row.get('作業項目/商品名', ''))
+        item = clean_string(row.get('作業項目/商品名', ''))
 
         recs.append({
-            '部署':             meta.get('部署',''),
-            '下請け':           meta.get('下請け',''),
-            '日付':             date_str,
-            #'企業名':           company,
-            '店舗名':           store,
-            '作業項目/商品名':  item,
-            '数量':             q,
-            '単価':             p,
-            '金額':             a
+            '部署': meta.get('部署', ''),
+            '下請け': meta.get('下請け', ''),
+            '日付': date_str,
+            '店舗名': store,
+            '作業項目/商品名': item,
+            '数量': q,
+            '単価': p,
+            '金額': a
         })
 
     return recs
+
 def filter_duplicates_by_basename(file_paths: list[str]) -> set[str]:
     """
     同一 basename をもつファイルが複数ある場合、
@@ -447,7 +489,10 @@ def handle_new_file(filepath: str) -> None:
             continue
         m['filepath'] = path
         try:
-            df = pd.read_csv(path) if path.lower().endswith('.csv') else read_with_dynamic_header(path)
+            if path.lower().endswith('.csv'):
+                df = pd.read_csv(path)
+            else:
+                df = read_with_dynamic_header(path)
             df.columns = [normalize_header(c) for c in df.columns]
             df = normalize_columns(df)
             all_records_month.extend(extract_items(df, m))
@@ -476,12 +521,17 @@ def handle_new_file(filepath: str) -> None:
             continue
         m['filepath'] = path
         try:
-            df = pd.read_csv(path) if path.lower().endswith('.csv') else read_with_dynamic_header(path)
+            if path.lower().endswith('.csv'):
+                df = pd.read_csv(path)
+            else:
+                df = read_with_dynamic_header(path)
             df.columns = [normalize_header(c) for c in df.columns]
             df = normalize_columns(df)
             all_records_year.extend(extract_items(df, m))
+            archive_file(path, success=True)
         except Exception as e:
             log_unmatched('読込エラー', f"{path}: {e}")
+            archive_file(path, success=False)
 
     df_year = pd.DataFrame(all_records_year)
     print(f"[EXTRACT-YEAR] 総レコード数: {len(df_year)} 件")
