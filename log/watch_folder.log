@@ -40204,3 +40204,11 @@
 [2025-07-14 16:18:17,156][WARNING] ヘッダ切替 | C:\Users\8963948\Desktop\帳簿アップロード\processed\営業部\営業部_株式会社 Forneeds_2025年1月 - コピー (3).xlsx@特殊作業一覧: header=1 に切替 | 
 [2025-07-14 16:18:17,159][WARNING] 読込エラー | C:\Users\8963948\Desktop\帳簿アップロード\processed\errors\~$営業部_株式会社 Forneeds_2025年1月 - コピー (3).xlsx: Excel file format cannot be determined, you must specify an engine manually. | 
 [2025-07-14 16:18:17,161][WARNING] 読込エラー | C:\Users\8963948\Desktop\帳簿アップロード\processed\errors\~$営業部_株式会社 Forneeds_2025年1月 - コピー (3).xlsx: Excel file format cannot be determined, you must specify an engine manually. | 
+[2025-07-14 16:19:01,759][INFO] ウォッチャー再開：停止フラグをクリア
+[2025-07-14 16:19:01,759][INFO] ウォッチャー開始：run_batch_watcher を呼び出し
+[2025-07-14 16:19:13,027][WARNING] ヘッダ切替 | C:\Users\8963948\Desktop\帳簿アップロード\営業部_株式会社 Forneeds_2025年1月 - コピー (3).xlsx@特殊作業一覧: header=1 に切替 | 
+[2025-07-14 16:19:13,032][WARNING] 読込エラー | C:\Users\8963948\Desktop\帳簿アップロード\processed\errors\~$営業部_株式会社 Forneeds_2025年1月 - コピー (3).xlsx: Excel file format cannot be determined, you must specify an engine manually. | 
+[2025-07-14 16:19:13,035][WARNING] 読込エラー | C:\Users\8963948\Desktop\帳簿アップロード\processed\errors\~$営業部_株式会社 Forneeds_2025年1月 - コピー (3).xlsx: Excel file format cannot be determined, you must specify an engine manually. | 
+[2025-07-14 16:19:13,099][WARNING] ヘッダ切替 | C:\Users\8963948\Desktop\帳簿アップロード\processed\営業部\営業部_株式会社 Forneeds_2025年1月 - コピー (3).xlsx@特殊作業一覧: header=1 に切替 | 
+[2025-07-14 16:19:13,103][WARNING] 読込エラー | C:\Users\8963948\Desktop\帳簿アップロード\processed\errors\~$営業部_株式会社 Forneeds_2025年1月 - コピー (3).xlsx: Excel file format cannot be determined, you must specify an engine manually. | 
+[2025-07-14 16:19:13,107][WARNING] 読込エラー | C:\Users\8963948\Desktop\帳簿アップロード\processed\errors\~$営業部_株式会社 Forneeds_2025年1月 - コピー (3).xlsx: Excel file format cannot be determined, you must specify an engine manually. | 
