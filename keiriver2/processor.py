@@ -235,25 +235,39 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ─── 動的ヘッダ検出付き読み込み ───
-def read_with_dynamic_header(path: str, sheet_name: int | str = None) -> pd.DataFrame:
+def read_with_dynamic_header(path: str, sheet_name=None) -> pd.DataFrame:
+    xls    = pd.ExcelFile(path)
+    sheets = [sheet_name] if sheet_name else xls.sheet_names
+    all_dfs = []
 
-    dfs: List[pd.DataFrame] = []
-    with pd.ExcelFile(path) as xls:
-        sheets = [sheet_name] if sheet_name is not None else xls.sheet_names
-        for sheet in sheets:
+    for sheet in sheets:
+        # まず先頭数行をヘッダーなしで読む
+        preview = pd.read_excel(xls, sheet_name=sheet, header=None, nrows=5)
+        header_row = None
+
+        # プレビュー行のうち「金額列っぽいヘッダ」があればOK
+        for i in range(len(preview)):
+            row = preview.iloc[i].fillna('')
+            # 各セル文字列を正規化してリスト化
+            norm = [normalize_header(str(v)) for v in row]
+            # いずれかが金額ヘッダ判定に引っかかれば、その行を採用
+            if any(is_amount_header(orig) or '金額' in normalize_header(orig) for orig in row):
+                header_row = i
+                break
+
+        # 見つからなければ従来のUnnamed判定へフォールバック
+        if header_row is None:
             df0 = pd.read_excel(xls, sheet_name=sheet, header=0)
             cols0 = list(df0.columns)
             unnamed = sum(1 for c in cols0 if str(c).startswith("Unnamed"))
+            header_row = 1 if unnamed >= len(cols0) * 0.5 else 0
 
-            if unnamed >= len(cols0) * 0.5:
-                df = pd.read_excel(xls, sheet_name=sheet, header=1)
-            else:
-                df = df0
+        # 決まったヘッダー行で再読み込み
+        df = pd.read_excel(xls, sheet_name=sheet, header=header_row)
+        all_dfs.append(df)
 
-            dfs.append(df)  
+    return pd.concat(all_dfs, ignore_index=True, sort=False)
 
-
-    return pd.concat(dfs, ignore_index=True, sort=False)
 
 
 def parse_flexible_date(raw_date, year_hint: str) -> str:
@@ -349,39 +363,66 @@ def pick_store_column(row: pd.Series, raw_cols: List[str]) -> str:
 def extract_items(df: pd.DataFrame, meta: dict) -> list[dict]:
     raw_cols  = list(df.columns)
     norm_cols = [normalize_header(c) for c in raw_cols]
+    date_col = next((c for c in raw_cols if normalize_header(c) == '日付'), None)
+    if date_col:
+     ym = meta['年月']            # "YYYY-MM"
+    default_date = f"{ym}-01"
+    df[date_col] = df[date_col].fillna('')
+    df[date_col] = df[date_col].apply(
+        lambda x: parse_flexible_date(x, ym.split('-')[0]) or default_date
+    )
+    idx_qty  = next((i for i,h in enumerate(norm_cols) if h.endswith('数量')), None)
+    idx_unit = next((i for i,h in enumerate(norm_cols) if '単価' in h), None)
 
-    idx_qty = next((i for i,h in enumerate(norm_cols) if h.endswith('数量')), None)
-    idx_unit   = next((i for i,h in enumerate(norm_cols) if '単価' in h), None)
-    sales_cols = [c for c in raw_cols if normalize_header(c) in ('売上','売り上げ')]
-    if sales_cols:
-        idx_amount = raw_cols.index(sales_cols[0])
+    # ── 金額列候補を全部取得 ──
+    amt_cands = [c for c in raw_cols if is_amount_header(c)]
+    # ── その中で「合計」っぽい列を絞り込む（部分一致） ──
+    total_cands = [
+        c for c in amt_cands
+        if '合計' in normalize_header(c) or 'total' in normalize_header(c)
+    ]
+
+    # ── 合計列優先 ──
+    if total_cands:
+        # 複数なら、列ごとの合計値が最大のものを選択
+        sums = {
+            c: df[c].map(lambda x: try_parse(x) or 0).sum()
+            for c in total_cands
+        }
+        chosen = max(sums, key=sums.get)
+        idx_amount = raw_cols.index(chosen)
+    elif amt_cands:
+        # 合計列がなければ最初の候補
+        idx_amount = raw_cols.index(amt_cands[0])
     else:
-        # 従来どおりキーワード＆パターンで検出
-        idx_amount = next((i for i,c in enumerate(raw_cols) if is_amount_header(c)), None)
-    if idx_amount is None:
         log_unmatched('列検出エラー', f"{meta['filepath']}: 金額列が見つかりません")
         return []
 
     recs: list[dict] = []
     for row_i, row in df.iterrows():
-        raw_date = row.get('日付')
-        year_hint = meta.get('年月', '').split('-')[0]  # 例: "2025"
-        date_str = parse_flexible_date(raw_date, year_hint)
+        raw_date   = row.get('日付')
+        year_hint  = meta.get('年月', '').split('-')[0]
+        date_str   = parse_flexible_date(raw_date, year_hint)
         if not date_str:
-            # date_str が空ならログ出力してスキップ
             log_unmatched(
                 '日付抽出失敗',
                 f"{meta['filepath']}#行{row_i}: 元値={raw_date}"
             )
             continue
+
+        # 数量
         if idx_qty is None or df.iloc[:, idx_qty].isna().all():
             q = 1
         else:
             q = try_parse(row.iloc[idx_qty])
+
+        # 単価（通常どおり）
         p = try_parse(row.iloc[idx_unit]) if idx_unit is not None else None
-        a = try_parse(row.iloc[idx_amount])
         if p is not None:
             p = round(p, 1)
+
+        # 金額（選択された1列のみ）
+        a = try_parse(row.iloc[idx_amount])
         if a is None:
             log_unmatched(
                 '金額欠損',
@@ -389,28 +430,14 @@ def extract_items(df: pd.DataFrame, meta: dict) -> list[dict]:
             )
             continue
 
-        #if q is not None and p is not None and pd.isna(row.iloc[idx_amount]):
-            #a = q * p
-        #if q is not None and a is not None and p is None:
-            #p = a / q if q else None
-        #if p is not None and a is not None and q is None:
-            #q = a / p if p else None
-        #if None not in (q, p, a) and abs(q * p - a) / max(a, 1) > 0.01:
-            #log_unmatched(
-                #'不整合',
-                #f"{meta['filepath']}#行{row_i}: {q}×{p} ≠ {a}"
-            #)
-
-        #company = normalize_field(str(row.get('企業','')), {}, '', '企業名')
         raw_store = pick_store_column(row, raw_cols)
-        store = normalize_field(raw_store, {}, MAPPING_STORE_PATH, '店舗名')
-        item    = clean_string(row.get('作業項目/商品名', ''))
+        store     = normalize_field(raw_store, {}, MAPPING_STORE_PATH, '店舗名')
+        item      = clean_string(row.get('作業項目/商品名', ''))
 
         recs.append({
             '部署':             meta.get('部署',''),
             '下請け':           meta.get('下請け',''),
             '日付':             date_str,
-            #'企業名':           company,
             '店舗名':           store,
             '作業項目/商品名':  item,
             '数量':             q,
@@ -419,6 +446,7 @@ def extract_items(df: pd.DataFrame, meta: dict) -> list[dict]:
         })
 
     return recs
+
 def filter_duplicates_by_basename(file_paths: list[str]) -> set[str]:
     """
     同一 basename をもつファイルが複数ある場合、
