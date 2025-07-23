@@ -339,7 +339,7 @@ def pick_store_column(row: pd.Series, raw_cols: List[str]) -> str:
         r'^ご?依頼.*',     # ご依頼主、ご依頼人...
         r'^お客様.*',      # お客様、お客様名...
         r'顧客.*',         # 顧客、顧客名...
-        r'(得意先|クライアント)',  # 得意先、クライアント
+        r'(クライアント)',  # 得意先、クライアント
         r'(送|発|配)送.*先',  # 送り先、発送先、配送先
         r'宛先',           # 宛先
         r'店舗.*',         # 店舗、店舗名
@@ -364,7 +364,23 @@ def pick_store_column(row: pd.Series, raw_cols: List[str]) -> str:
 
 
 # ─── レコード抽出 ───
+
+def is_summary_row(row: pd.Series) -> bool:
+    """
+    行中の全セルを文字列化して空白を除去し、
+    どれかに「小計」または「合計」を含んでいれば True を返す。
+    """
+    texts = (
+        row
+        .astype(str)
+        .str.replace(r'\s+', '', regex=True)  # 空白をすべて削除
+    )
+    return texts.str.contains(r'小計|合計', na=False).any()
+
 def extract_items(df: pd.DataFrame, meta: dict) -> list[dict]:
+    # ─── 小計・合計行を除外 ───
+    df = df.loc[~df.apply(is_summary_row, axis=1)]
+    # 除外後の列一覧を取得
     raw_cols  = list(df.columns)
     norm_cols = [normalize_header(c) for c in raw_cols]
     date_col = next((c for c in raw_cols if normalize_header(c) == '日付'), None)
