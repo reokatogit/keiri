@@ -235,40 +235,44 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ─── 動的ヘッダ検出付き読み込み ───
-def read_with_dynamic_header(path: str, sheet_name=None) -> pd.DataFrame:
-    xls    = pd.ExcelFile(path)
-    sheets = [sheet_name] if sheet_name else xls.sheet_names
-    all_dfs = []
+def read_with_dynamic_header(path: str) -> dict[str, pd.DataFrame]:
+    # 1) 全シートを一括でヘッダーなし読み込み
+    print(f"[DEBUG] → read_with_dynamic_header start: path={path}")
+    all_preview: dict[str, pd.DataFrame] = pd.read_excel(
+        path, sheet_name=None, header=None, nrows=5
+    )
+    sheet_dfs: dict[str, pd.DataFrame] = {}
+    base = os.path.splitext(os.path.basename(path))[0]
 
-    for sheet in sheets:
-        # まず先頭数行をヘッダーなしで読む
-        preview = pd.read_excel(xls, sheet_name=sheet, header=None, nrows=5)
-        header_row = None
+    # 2) 各シートを順に処理
+    for sheet, preview in all_preview.items():
+        print(f"[DEBUG] → processing sheet: {sheet}, preview shape={preview.shape}")
+        key = f"{base}_{sheet}"
 
-        # プレビュー行のうち「金額列っぽいヘッダ」があればOK
-        for i in range(len(preview)):
-            row = preview.iloc[i].fillna('')
-            # 各セル文字列を正規化してリスト化
-            norm = [normalize_header(str(v)) for v in row]
-            # いずれかが金額ヘッダ判定に引っかかれば、その行を採用
-            if any(is_amount_header(orig) or '金額' in normalize_header(orig) for orig in row):
+        # ヘッダー行の候補検出（プレビュー5行目まで）
+        header_row = 0
+        for i, row in preview.iterrows():
+            print(f"[DEBUG]   row[{i}] type={type(row)}, values={row.values[:5]}")
+            norm = [normalize_header(str(v)) for v in row.fillna('')]
+            if any(is_amount_header(h) or '金額' in h for h in norm):
                 header_row = i
                 break
-
-        # 見つからなければ従来のUnnamed判定へフォールバック
-        if header_row is None:
-            df0 = pd.read_excel(xls, sheet_name=sheet, header=0)
-            cols0 = list(df0.columns)
-            unnamed = sum(1 for c in cols0 if str(c).startswith("Unnamed"))
-            header_row = 1 if unnamed >= len(cols0) * 0.5 else 0
-
-        # 決まったヘッダー行で再読み込み
-        df = pd.read_excel(xls, sheet_name=sheet, header=header_row)
-        all_dfs.append(df)
-
-    return pd.concat(all_dfs, ignore_index=True, sort=False)
+        print(f"[DEBUG] → detected header_row={header_row} for sheet {sheet}")
+        df = pd.read_excel(path, sheet_name=sheet, header=header_row)
+        if df.empty:
+            log_unmatched('読込エラー', f"{base}_{sheet}: 空のシートです")
+            continue
+        df['__source'] = f"{base}_{sheet}"
+        sheet_dfs[sheet] = df
 
 
+    # 3) 全シート読み込み後のチェック（ここはループの外）
+    if not sheet_dfs:
+        raise ValueError(f"{base} のシートすべてでデータが取れませんでした")
+    return sheet_dfs
+
+    # 4) 正常シートを縦結合して返す
+    return pd.concat(dfs, ignore_index=True, sort=False)
 
 def parse_flexible_date(raw_date, year_hint: str) -> str:
     if pd.isna(raw_date):
@@ -508,27 +512,58 @@ def handle_new_file(filepath: str) -> None:
     month_paths = [p for p, _ in candidates_month]
     kept_month = set(filter_duplicates_by_basename(month_paths))
     all_records_month: list[dict] = []
+
     for path, m in candidates_month:
         if path not in kept_month:
             continue
         m['filepath'] = path
+
+        # ── シート単位で DataFrame dict を取得 ──
         try:
             if path.lower().endswith('.csv'):
-                df = pd.read_csv(path)
+                # CSV はファイル名をシート名とみなす
+                base = os.path.splitext(os.path.basename(path))[0]
+                sheets = { base: pd.read_csv(path) }
             else:
-                df = read_with_dynamic_header(path)
-            df.columns = [normalize_header(c) for c in df.columns]
-            df = normalize_columns(df)
-            all_records_month.extend(extract_items(df, m))
-            archive_file(path, success=True)
+                # Excel は複数シートを dict で返すように read_with_dynamic_header を修正済み
+                sheets = read_with_dynamic_header(path)
         except Exception as e:
-            log_unmatched('読込エラー', f"{path}: {e}")
-            archive_file(path, success=False)
+            print(f"[ERROR] read_with_dynamic_header failed: {repr(e)}")
+            raise
 
+        # ── 各シートを個別処理 ──
+        for sheet_name, df in sheets.items():
+            print(f"[DEBUG2] sheet={sheet_name}, rows={len(df)}, cols={df.columns.tolist()}")
+
+            # ② 列名正規化
+            try:
+                df2 = normalize_columns(df)
+            except Exception as e:
+                print(f"[ERROR] normalize_columns failed: {repr(e)}")
+                raise
+            print(f"[DEBUG2] after normalize_columns ({sheet_name}), cols={df2.columns.tolist()}")
+
+            # ③ レコード抽出
+            try:
+                # シート名をメタに追加しておく
+                m_sheet = m.copy()
+                m_sheet['sheet'] = sheet_name
+                recs = extract_items(df2, m_sheet)
+            except Exception as e:
+                print(f"[ERROR] extract_items failed ({sheet_name}): {repr(e)}")
+                raise
+            print(f"[DEBUG2] extract_items returned {len(recs)} records for sheet {sheet_name}")
+
+            all_records_month.extend(recs)
+
+        # ── 元ファイル単位でアーカイブ ──
+        archive_file(path, success=True)
+
+    # ── 最終的に全シート分を結合 ──
     df_month = pd.DataFrame(all_records_month)
     print(f"[EXTRACT-MONTH] 総レコード数: {len(df_month)} 件")
 
-    # ⑤ 年次：移動済みパス補正 → basename 重複排除 → 抽出（アーカイブ不要）
+    # ─── ⑤ 年次：移動済みパス補正 → basename 重複排除 → 抽出（アーカイブあり） ───
     corrected = []
     for path, m in candidates_year:
         if not os.path.exists(path):
@@ -540,25 +575,46 @@ def handle_new_file(filepath: str) -> None:
     year_paths = [p for p, _ in corrected]
     kept_year = set(filter_duplicates_by_basename(year_paths))
     all_records_year: list[dict] = []
+
     for path, m in corrected:
         if path not in kept_year:
             continue
         m['filepath'] = path
+
         try:
+            # ── シートごとに dict を取得 ──
             if path.lower().endswith('.csv'):
-                df = pd.read_csv(path)
+                base = os.path.splitext(os.path.basename(path))[0]
+                sheets = { base: pd.read_csv(path) }
             else:
-                df = read_with_dynamic_header(path)
-            df.columns = [normalize_header(c) for c in df.columns]
-            df = normalize_columns(df)
-            all_records_year.extend(extract_items(df, m))
+                sheets = read_with_dynamic_header(path)
+
+            # ── 各シートを個別処理 ──
+            for sheet_name, df in sheets.items():
+                print(f"[DEBUG] year sheet={sheet_name}, rows={len(df)}, cols={df.columns.tolist()}")
+
+                # 列名正規化
+                df.columns = [normalize_header(c) for c in df.columns]
+                df2 = normalize_columns(df)
+
+                # メタにシート名を追加
+                m_sheet = m.copy()
+                m_sheet['sheet'] = sheet_name
+                recs = extract_items(df2, m_sheet)
+                print(f"[DEBUG] extract_items returned {len(recs)} records for sheet {sheet_name}")
+
+                all_records_year.extend(recs)
+
+            # 全シート正常終了なら success=True
             archive_file(path, success=True)
+
         except Exception as e:
             log_unmatched('読込エラー', f"{path}: {e}")
             archive_file(path, success=False)
 
     df_year = pd.DataFrame(all_records_year)
     print(f"[EXTRACT-YEAR] 総レコード数: {len(df_year)} 件")
+
 
     # ⑥ 出力設定（列幅マップ）
     col_widths = {
