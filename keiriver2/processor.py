@@ -11,14 +11,14 @@ from typing import List
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 def call_chatgpt_api(prompt: str,
-                     model: str = "gpt-3.5-turbo",
+                     model: str = "gpt-4.1-nano",
                      temperature: float = 0.0,
                      max_tokens: int = 50) -> str:
     api_key = os.getenv("OPENAI_API_KEY")
     # 1) テストモード：キーがない場合は候補返却（既存挙動）
-    if not api_key:
-        m = re.search(r'候補: \["(.+)"\]', prompt)
-        return m.group(1) if m else ""
+    #if not api_key:
+        #m = re.search(r'候補: \["(.+)"\]', prompt)
+        #return m.group(1) if m else ""
 
     try:
         response = openai.ChatCompletion.create(
@@ -133,15 +133,25 @@ def normalize_field(orig: str, mapping: dict, dict_path: str, field_name: str) -
         return store[cleaned]
     # 3) ChatGPT補完（仮の呼び出し例）
     prompt = (
-        f"以下は「{field_name}」の表記ゆれ例です。\n"
-        f"– 候補: [\"{cleaned}\"]\n"
-        "正式名称を一つだけ日本語で返してください。"
-    )
+    f"以下は「{field_name}」の飲食店名の表記ゆれ例です。\n"
+    f"– 候補: [\"{cleaned}\"]\n\n"
+    "【出力ルール】\n"
+    "・入力の表記ゆれを解消する（半角⇆全角統一、記号・スペースの削除など）\n"
+    "・できるだけ元の名称に忠実に、不要な部門名や法人名の追加はしない\n"
+    "・“”「」などの括弧は含めない\n"
+    "・英数字は半角、アルファベットは大文字小文字は元のまま\n\n"
+    "◆出力例: 椿屋カフェ北千住マルイ店\n"
+    "◆返すべき項目は１つだけ。余計な説明は入れず、名称のみを返してください。"
+    "店舗名と思しき名称に○○店とついている場合(例:炭火焼肉屋さかい新宮店)、出力にも○○店とつけてください。"
+)
+    
+
     response = call_chatgpt_api(prompt)
     normalized = response.strip()
 
     # 6) API自体は成功しても「そのまま返し」や空文字なら名寄せ失敗扱い
-    if not normalized or normalized == cleaned:
+    #if not normalized or normalized == cleaned:
+    if not normalized:
         log_unmatched(
             '名寄せ失敗',
             f"{field_name}: 候補={cleaned} → 正式名称取得失敗"
@@ -149,7 +159,7 @@ def normalize_field(orig: str, mapping: dict, dict_path: str, field_name: str) -
         return cleaned
 
     # 4) 辞書追加
-    if normalized and normalized != cleaned:
+    if normalized:
         append_mapping(cleaned, normalized, field_name)
         store[cleaned] = normalized
 
@@ -760,3 +770,9 @@ def handle_new_file(filepath: str) -> None:
         ws.autofilter(0, 0, len(df_yr_ext), len(df_yr_ext.columns)-1)
 
     print(f"[DONE] 全社再生成完了: 年月={ym}／年次完了")
+    # ── 処理完了通知 ──
+    try:
+        from notifier import notify
+        notify("Keiri 処理完了", os.path.basename(filepath) + " の処理が終わりました。", duration=5)
+    except Exception:
+        pass

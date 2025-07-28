@@ -28,7 +28,7 @@ UNMATCHED_LOG = os.path.join(os.path.dirname(__file__), 'unmatched_final.csv')
 # ── 6) 名寄せ辞書ファイルパス
 COMPANY_DICT_PATH  = os.path.join(os.path.dirname(__file__), 'company_dict.csv')
 STORE_DICT_PATH    = os.path.join(os.path.dirname(__file__), 'store_dict.csv')
-STORE_MAPPING_PATH = os.path.join(os.path.dirname(__file__), 'mapping_store.csv')
+MAPPING_STORE_PATH = os.path.join(os.path.dirname(__file__), 'mapping_store.csv')
 
 # ── 7) 列名エイリアス定義
 COLUMN_ALIASES = {
@@ -57,8 +57,6 @@ VALID_EXTENSIONS = ('.xlsx', '.xls', '.csv')
 # ── 10) 設定ファイルパス（ユーザーごとに隠しファイルとして保存）
 CONFIG_PATH = os.path.expanduser("~/.keiri_config.json")
 
-# 辞書ファイルのパス（店舗名などの名寄せ用）
-MAPPING_STORE_PATH = '/path/to/mapping_store.csv'
 
 # 未整形・エラー情報の CSV ログ
 UNMATCHED_LOG = os.path.join('log', 'unmatched.csv')

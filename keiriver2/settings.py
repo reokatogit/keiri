@@ -1,5 +1,4 @@
 # settings.py
-
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 import keyring
@@ -41,24 +40,24 @@ class SettingsDialog(simpledialog.Dialog):
 
     def apply(self):
         """OK押下時に呼ばれる：設定を保存"""
-        # 1) APIキーのバリデーション
+        # 1) APIキー取得 & 簡易バリデーション
         key = self.api_var.get().strip()
         if key:
+            # ① openai.api_key に設定
             openai.api_key = key
             try:
                 # 簡単な接続テスト: モデル一覧を取得
                 _ = openai.Model.list()
             except Exception as e:
                 messagebox.showerror("APIキーエラー", f"APIキーが無効か通信に失敗しました：\n{e}")
-                # ここで保存を中断
                 return
 
-        # 2) APIキー保存／削除
-        if key:
-            keyring.set_password("keiri", "openai_api_key", key)
+            # ② keyring に永続保存
+            keyring.set_password("keiri_system", "openai_api_key", key)
         else:
+            # 空文字なら keyring から削除
             try:
-                keyring.delete_password("keiri", "openai_api_key")
+                keyring.delete_password("keiri_system", "openai_api_key")
             except keyring.errors.PasswordDeleteError:
                 pass
 
