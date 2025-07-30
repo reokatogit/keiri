@@ -114,14 +114,34 @@ except ImportError:
 def clean_string(s: str) -> str:
     if not isinstance(s, str):
         return ''
-    # Unicode NFKC 正規化
     s = unicodedata.normalize('NFKC', s)
-    # 改行をスペースに
     s = s.replace('\n', ' ')
-    # 連続空白を 1 スペースに
     s = re.sub(r'\s+', ' ', s)
-    return s.strip()
 
+    # 記号類をまとめて削除
+    # note: escape hyphens by placing them first or last
+    s = re.sub(
+        r'[「」『』“”‘’\(\)\[\]\{\}<>・：；。，、!！\?？…ー─–—―\-]',
+        '',
+        s
+    )
+
+    # 英数字・日本語以外を削除（\w + Japanese）
+    s = re.sub(r'[^\w]', '', s)
+
+    # 敬称・肩書きを削除
+    for h in ['様', 'さん', '殿', '先生', '御中', '様分']:
+        s = s.replace(h, '')
+
+    # 企業形態表記を削除
+    s = re.sub(
+        r'(株式会社|（株）|㈱|有限会社|合同会社|LLC|Inc\.?|Co\.?|Ltd\.?)',
+        '',
+        s,
+        flags=re.IGNORECASE
+    )
+
+    return s.strip()
 # ─── フィールド正規化スタブ ───
 # ─── フィールド正規化（名寄せ） ───
 def normalize_field(orig: str, mapping: dict, dict_path: str, field_name: str) -> str:
@@ -136,10 +156,10 @@ def normalize_field(orig: str, mapping: dict, dict_path: str, field_name: str) -
     f"以下は「{field_name}」の飲食店名の表記ゆれ例です。\n"
     f"– 候補: [\"{cleaned}\"]\n\n"
     "【出力ルール】\n"
-    "・入力の表記ゆれを解消する（半角⇆全角統一、記号・スペースの削除など）\n"
-    "・できるだけ元の名称に忠実に、不要な部門名や法人名の追加はしない\n"
-    "・“”「」などの括弧は含めない\n"
-    "・英数字は半角、アルファベットは大文字小文字は元のまま\n\n"
+    "・入力の表記ゆれを解消するのが目的です。\n"
+    "・できるだけ元の名称に忠実に、不要な部門名や法人名の追加はしない。\n"
+    "・“”「」などの括弧は含めない。スペースは含めてはいけません。\n"
+    "・英数字は半角、アルファベットは大文字に統一してください。\n\n"
     "◆出力例: 椿屋カフェ北千住マルイ店\n"
     "◆返すべき項目は１つだけ。余計な説明は入れず、名称のみを返してください。"
     "店舗名と思しき名称に○○店とついている場合(例:炭火焼肉屋さかい新宮店)、出力にも○○店とつけてください。"
@@ -262,12 +282,10 @@ def read_with_dynamic_header(path: str) -> dict[str, pd.DataFrame]:
         # ヘッダー行の候補検出（プレビュー5行目まで）
         header_row = 0
         for i, row in preview.iterrows():
-            print(f"[DEBUG]   row[{i}] type={type(row)}, values={row.values[:5]}")
             norm = [normalize_header(str(v)) for v in row.fillna('')]
             if any(is_amount_header(h) or '金額' in h for h in norm):
                 header_row = i
-                break
-        print(f"[DEBUG] → detected header_row={header_row} for sheet {sheet}")
+                break  
         df = pd.read_excel(path, sheet_name=sheet, header=header_row)
         if df.empty:
             log_unmatched('読込エラー', f"{base}_{sheet}: 空のシートです")
@@ -525,6 +543,8 @@ def handle_new_file(filepath: str) -> None:
     for base in (WATCH_DIR, PROCESSED_DIR):
         for root, _, files in os.walk(base):
             for fn in files:
+                if fn.startswith('~$'):
+                    continue
                 fullpath = os.path.join(root, fn)
                 m = parse_filename(fullpath)
                 if 'エラー' in m:

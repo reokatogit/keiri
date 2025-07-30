@@ -1,5 +1,5 @@
 # tray.py
-
+import socket
 import os, sys, threading, tkinter as tk, csv
 import tkinter.messagebox as mb
 from pystray import Icon, Menu, MenuItem
@@ -8,7 +8,29 @@ from watch_folder import run_batch_watcher_loop, stop_batch_watcher
 from get_api_key import get_openai_api_key
 from settings import SettingsDialog
 from config import UNMATCHED_LOG, WATCH_LOG
+from mapping_utils import sort_mapping_store 
+from win10toast import ToastNotifier            
 
+LOCK_PORT = 39393
+_lock_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+try:
+    _lock_socket.bind(("127.0.0.1", LOCK_PORT))
+except OSError:
+    sys.exit(0)
+
+toaster = ToastNotifier()
+
+def on_sort_mapping_store(icon, item):
+    try:
+        sort_mapping_store()                     
+        # 完了通知
+        toaster.show_toast(
+            "辞書ソート完了",
+            "mapping_store.csv を並び替えました。",
+            icon_path=None, duration=3, threaded=True
+        )
+    except Exception as e:
+        mb.showerror("ソート失敗", f"辞書のソートに失敗しました：\n{e}")
 watcher_thread: threading.Thread | None = None
 
 def start_watcher():
@@ -72,8 +94,9 @@ def show_tray_icon():
     # メニュー定義
     menu = Menu(
         MenuItem("📝ログを見る", lambda i, _: open_log()),
-        MenuItem("🗑️ログをクリア",   lambda i, _: clear_logs()),
+        MenuItem("🗑️ログをクリア", lambda i, _: clear_logs()),
         MenuItem("⚙️設定", on_open_settings),
+        MenuItem("🔃辞書をソート", on_sort_mapping_store),
         MenuItem("🔄再起動", restart_app),
         MenuItem("❌終了", quit_app),
     )

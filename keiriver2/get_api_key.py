@@ -14,9 +14,7 @@ def get_openai_api_key() -> str:
     if not key:
         raise RuntimeError(
             "APIキーが登録されていません。\n"
-            "まず「python register_key.py」を実行して登録してください。"
         )
     key = keyring.get_password(SERVICE, ENTRY)
-    print(f"[DEBUG][get_api_key] keyring returned: {key!r}")
     openai.api_key = key
     return key
