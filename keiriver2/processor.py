@@ -1,104 +1,36 @@
-#processor.py 
-import os 
+# processor.py
+import os
 import re
 import unicodedata
 import pandas as pd
 import csv
 from datetime import datetime
-import openai
+import difflib
+import time
+import random
 from typing import List
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# --- OpenAI (任意: 無ければ後で例外にする) ---
+try:
+    import openai  # noqa: F401
+except Exception:
+    openai = None  # noqa: F401
 
-def call_chatgpt_api(prompt: str,
-                     model: str = "gpt-4.1-nano",
-                     temperature: float = 0.0,
-                     max_tokens: int = 50) -> str:
-    api_key = os.getenv("OPENAI_API_KEY")
-    # 1) テストモード：キーがない場合は候補返却（既存挙動）
-    #if not api_key:
-        #m = re.search(r'候補: \["(.+)"\]', prompt)
-        #return m.group(1) if m else ""
-
-    try:
-        response = openai.ChatCompletion.create(
-            model=model,
-            messages=[
-                {"role": "system",  "content": "あなたは正規化アシスタントです。"},
-                {"role": "user",    "content": prompt}
-            ],
-            temperature=temperature,
-            max_tokens=max_tokens,
-            n=1,
-        )
-        return response.choices[0].message.content.strip()
-    except openai.error.APIConnectionError as e:
-        log_unmatched('ChatGPT APIエラー', f"接続エラー: {e}")
-    except openai.error.RateLimitError as e:
-        log_unmatched('ChatGPT APIエラー', f"レート制限: {e}")
-    except openai.error.InvalidRequestError as e:
-        log_unmatched('ChatGPT APIエラー', f"無効なリクエスト: {e}")
-    except openai.error.OpenAIError as e:
-        log_unmatched('ChatGPT APIエラー', f"サーバーエラー: {e}")
-
-    # 何らかのエラーが起きた場合はフォールバック
-    m = re.search(r'候補: \["(.+)"\]', prompt)
-    return m.group(1) if m else ""
-_mapping_store: dict[str, str] = {}
-
-def load_mapping_store() -> dict[str, str]:
-    global _mapping_store
-    if not _mapping_store and os.path.exists(MAPPING_STORE_PATH):
-        with open(MAPPING_STORE_PATH, encoding='utf-8-sig') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                _mapping_store[row['cleaned']] = row['normalized']
-    return _mapping_store
-
-def append_mapping(cleaned: str, normalized: str, field_name: str):
-    header = not os.path.exists(MAPPING_STORE_PATH)
-    with open(MAPPING_STORE_PATH, 'a', newline='', encoding='utf-8-sig') as f:
-        w = csv.writer(f)
-        if header:
-            w.writerow(['cleaned','normalized','field_name','created_at'])
-        w.writerow([cleaned, normalized, field_name, datetime.utcnow().isoformat()])
-    
-
-# ─── 外部ユーティリティ／設定読み込み ───
+# --- ロガー（無ければ標準出力にフォールバック） ---
 try:
     from logger import log_unmatched
 except ImportError:
     def log_unmatched(tag: str, message: str):
         print(f"[UNMATCHED][{tag}] {message}")
 
-try:
-    from parser import parse_filename
-except ImportError:
-    def parse_filename(fp: str) -> dict:
-        fn = os.path.basename(fp)
-        name, _ = os.path.splitext(fn)
-    # 末尾の「_WEB」除去などの処理はそのまま
-        parts = name.split('_')
-    # 最低 3 要素（部署, 元請け, 年月）があれば OK、4 つ目以降は無視する
-        if len(parts) >= 3:
-           dept, contractor, ym_jp = parts[0], parts[1], parts[2]
-        # 以下は変更なし
-        try:
-            y, m = re.match(r'(\d{4})年(\d{1,2})月', ym_jp).groups()
-            ym = f"{y}-{int(m):02d}"
-            return {'filepath': fp, '部署': dept, '下請け': contractor, '年月': ym}
-        except Exception:
-            pass
-        return {'filepath': fp, 'エラー': 'ファイル名パース失敗'}
-
+# --- 設定（無ければデフォルト値） ---
 try:
     from config import (
         VALID_EXTENSIONS,
         WATCH_DIR, PROCESSED_DIR, OUTPUT_DIR,
-        COLUMN_ALIASES, MAPPING_STORE_PATH  
+        COLUMN_ALIASES, MAPPING_STORE_PATH
     )
 except ImportError:
-    # テスト用ダミー設定
     VALID_EXTENSIONS = ('.csv', '.xlsx', '.xls')
     WATCH_DIR       = 'watch'
     PROCESSED_DIR   = 'processed'
@@ -109,103 +41,275 @@ except ImportError:
             '商品', '品名', '内容', '商品名'
         ]
     }
+    # ← ★ 追加: MAPPING_STORE_PATH のデフォルト
+    MAPPING_STORE_PATH = os.environ.get("MAPPING_STORE_PATH", "mapping_store.csv")
 
-# ─── 文字列クリーニング ───
+# --- 解析用（無ければ簡易版） ---
+try:
+    from parser import parse_filename
+except ImportError:
+    def parse_filename(fp: str) -> dict:
+        fn = os.path.basename(fp)
+        name, _ = os.path.splitext(fn)
+        # 末尾の「_WEB」除去などの処理はそのまま
+        parts = name.split('_')
+        # 最低 3 要素（部署, 元請け, 年月）があれば OK、4 つ目以降は無視する
+        if len(parts) >= 3:
+            dept, contractor, ym_jp = parts[0], parts[1], parts[2]
+            try:
+                y, m = re.match(r'(\d{4})年(\d{1,2})月', ym_jp).groups()
+                ym = f"{y}-{int(m):02d}"
+                return {'filepath': fp, '部署': dept, '下請け': contractor, '年月': ym}
+            except Exception:
+                pass
+        return {'filepath': fp, 'エラー': 'ファイル名パース失敗'}
+
+# --- OpenAI API キー設定（openai がある時だけ） ---
+if openai is not None:
+    openai.api_key = os.getenv("OPENAI_API_KEY")
+
+# =========================
+# 名寄せ用 マッピングストア
+# =========================
+_mapping_store: dict[str, str] = {}
+
+def load_mapping_store() -> dict[str, str]:
+    """CSV（cleaned, normalized, field_name, created_at）の読み込み。"""
+    global _mapping_store
+    if not _mapping_store and os.path.exists(MAPPING_STORE_PATH):
+        with open(MAPPING_STORE_PATH, encoding='utf-8-sig') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                _mapping_store[row['cleaned']] = row['normalized']
+    return _mapping_store
+
+def append_mapping(cleaned: str, normalized: str, field_name: str):
+    """CSV に1行追記。ヘッダがなければ作る。"""
+    header = not os.path.exists(MAPPING_STORE_PATH)
+    with open(MAPPING_STORE_PATH, 'a', newline='', encoding='utf-8-sig') as f:
+        w = csv.writer(f)
+        if header:
+            w.writerow(['cleaned','normalized','field_name','created_at'])
+        w.writerow([cleaned, normalized, field_name, datetime.utcnow().isoformat()])
+
+# =========================
+# 文字列クリーニング
+# =========================
+# モデル出力の禁止文字（ハイフン/ダッシュ類は含めない）
+FORBIDDEN_CHARS = '「」『』“”‘’()[]{}<>・：；。，、!?？…'
+_FORBIDDEN_RE = re.compile(f"[{re.escape(FORBIDDEN_CHARS)}]")
+
 def clean_string(s: str) -> str:
+    """表記ゆれ正規化用の前処理。各種ダッシュ（- – — ― ─）は残す。"""
     if not isinstance(s, str):
         return ''
     s = unicodedata.normalize('NFKC', s)
     s = s.replace('\n', ' ')
     s = re.sub(r'\s+', ' ', s)
 
-    # 記号類をまとめて削除
-    # note: escape hyphens by placing them first or last
-    s = re.sub(
-    r'[「」『』“”‘’\(\)\[\]\{\}<>・：；。，、!！\?？…]',
-    '',
-    s)
+    # 記号類を削除（ダッシュ類は残す）
+    s = re.sub(r'[「」『』“”‘’\(\)\[\]\{\}<>・：；。，、!！\?？…]', '', s)
 
-    # 英数字・日本語以外を削除（\w + Japanese）
-    s = re.sub(r'[^\w]', '', s)
+    # 英数字・日本語以外を削除（ダッシュ類は残す）
+    # 許可: \w（Unicode英数/和文の多く）+ ひら/カナ/漢字 + 各種ダッシュ
+    s = re.sub(r'[^\w\u3040-\u30FF\u3400-\u9FFF\-\u2013\u2014\u2015\u2500]', '', s)
 
-    # 敬称・肩書きを削除
+    # 敬称・肩書き
     for h in ['様', 'さん', '殿', '先生', '御中', '様分']:
         s = s.replace(h, '')
 
-    # 企業形態表記を削除
+    # 企業形態表記
     s = re.sub(
         r'(株式会社|（株）|㈱|有限会社|合同会社|LLC|Inc\.?|Co\.?|Ltd\.?)',
         '',
         s,
         flags=re.IGNORECASE
     )
-
     return s.strip()
-# ─── フィールド正規化スタブ ───
-# ─── フィールド正規化（名寄せ） ───
+
+# =========================
+# 類似度ユーティリティ
+# =========================
+def _trigrams(s: str):
+    # 長さ2以下でも空にならないように 1-gram/2-gram代替
+    n = max(1, len(s) - 2)
+    return [s[i:i+3] for i in range(n)]
+
+def _jaccard(a, b):
+    sa, sb = set(a), set(b)
+    if not sa and not sb:
+        return 1.0
+    return len(sa & sb) / max(1, len(sa | sb))
+
+def _brand_token(s: str):
+    # 先頭のブランドっぽいトークン（例：「くら寿司」「焼肉きんぐ」など）
+    for sep in ("店", " ", "　"):
+        idx = s.find(sep)
+        if idx > 0:
+            return s[:idx]
+    return s[:min(6, len(s))]
+
+def _similarity(a: str, b: str) -> float:
+    seq = difflib.SequenceMatcher(None, a, b).ratio()
+    j = _jaccard(_trigrams(a), _trigrams(b))
+    bonus = 0.1 if _brand_token(a) == _brand_token(b) else 0.0
+    return 0.6 * seq + 0.4 * j + bonus
+
+CAND_THRESHOLD = 0.80   # 0.80以上のみ候補として採用
+TOP_K = 3               # 上位3件
+
+def _top_k_similar(cleaned: str, store_keys):
+    scored = [(key, _similarity(cleaned, key)) for key in store_keys]
+    scored.sort(key=lambda x: x[1], reverse=True)
+    return scored[:TOP_K]
+
+# =========================
+# プロンプト生成
+# =========================
+def _build_prompt(field_name: str, cleaned: str, candidates: list[str] | None) -> str:
+    cand_line = " / ".join(candidates) if candidates else ""
+    cand_section = f"【候補】{cand_line}\n" if candidates else ""
+    return (
+        f"以下は「{field_name}」の店舗名の表記ゆれです。正しい店名を1つだけ返してください。\n\n"
+        "【タスク】\n"
+        "- 入力の表記ゆれを正し、店舗名を1つに正規化する。\n"
+        "- 元の名称に忠実。法人格・部門・「様」「分」「スタッフ」などは除外。\n"
+        "- 「○○店」等が元に含まれていれば残す。\n"
+        "- 「ー」（長音符）や「-」「—」「–」「─」「―」は削除しない。\n"
+        "- 英数字は半角、アルファベットは大文字に統一。\n"
+        "- スペースは一切入れない。括弧（“”「」()）は入れない。\n"
+        "- 本来そのような名前でないのに全てカタカナ/アルファベット化する名寄せはしない。\n\n"
+        "【よくある誤りを必ず修正】\n"
+        "- 「イスト」→「イースト」 / 「ガデン」→「ガーデン」\n"
+        "- 地名の誤読は正す（例：所沢、下富 など）\n"
+        "- 余計な1文字混入（例：「ス寿司虎…」「ユゆず庵…」）は除去\n\n"
+        + cand_section +
+        "【不確実】\n"
+        "- 推測は禁止。判断できなければ入力（クリーニング後）をそのまま返す。\n\n"
+        f"【入力】\n{cleaned}\n\n"
+        "【出力形式（厳守）】名称のみ1行（前後に空白なし、改行なし）\n"
+        "【出力例】\n椿屋カフェ北千住マルイ店\n丸源ラーメン仙台泉店"
+    )
+
+# =========================
+# OpenAI 呼び出し
+# =========================
+LLM_TEMPERATURE = 0.0
+LLM_TOP_P = 1.0
+LLM_MODEL = os.environ.get("OPENAI_MODEL_NAME", "gpt-4.1-nano")
+
+def call_chatgpt_api(prompt: str,
+                     model: str = LLM_MODEL,
+                     temperature: float = LLM_TEMPERATURE,
+                     top_p: float = LLM_TOP_P,
+                     max_tokens: int = 64) -> str:
+    """
+    OpenAI API ラッパ。
+    ここでは例外を握りつぶさない（上位のリトライで処理するため）。
+    """
+    if openai is None:
+        raise RuntimeError("openai package is not installed.")
+    resp = openai.ChatCompletion.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": "あなたは正規化アシスタントです。"},
+            {"role": "user",   "content": prompt}
+        ],
+        temperature=temperature,
+        top_p=top_p,
+        max_tokens=max_tokens,
+        n=1,
+    )
+    content = getattr(resp.choices[0].message, "content",
+                      resp.choices[0].message["content"])
+    return content.strip()
+
+def _call_llm_with_retry(prompt: str, max_retries=4):
+    """503/504等の一時エラーに指数バックオフでリトライ。"""
+    delay = 0.8
+    for i in range(max_retries):
+        try:
+            return call_chatgpt_api(
+                prompt,
+                model=LLM_MODEL,
+                temperature=LLM_TEMPERATURE,
+                top_p=LLM_TOP_P,
+                max_tokens=64
+            )
+        except Exception as e:
+            msg = str(e)
+            # 典型的な一時エラーならリトライ
+            if any(k in msg for k in ["overloaded", "not ready", "5xx", "503", "504", "timeout"]):
+                if i == max_retries - 1:
+                    raise
+                time.sleep(delay + random.random() * 0.25)
+                delay *= 2
+            else:
+                # クライアント系/構文エラーなどは即中断
+                raise
+
+# =========================
+# LLM 出力ガード
+# =========================
+def _finalize_llm_name(s: str, fallback: str) -> str:
+    if not isinstance(s, str) or not s.strip():
+        return fallback
+    # 前後空白・改行・内部スペースを除去（出力は1行・スペースなしがルール）
+    s = s.strip().replace(' ', '').replace('\n', '')
+    # 全角→半角、英字は大文字化
+    s = unicodedata.normalize('NFKC', s)
+    s = ''.join(ch.upper() if 'a' <= ch.lower() <= 'z' else ch for ch in s)
+    # 禁止文字を除去（ダッシュ類はそのまま）
+    s = _FORBIDDEN_RE.sub('', s)
+    # 空になったらフォールバック
+    return s or fallback
+
+# =========================
+# フィールド正規化（名寄せ）
+# =========================
 def normalize_field(orig: str, mapping: dict, dict_path: str, field_name: str) -> str:
     # 1) 前処理済みテキストをキー化
     cleaned = clean_string(orig)
-    # 2) 辞書参照
+
+    # 2) 既知辞書ヒットなら即返す
     store = load_mapping_store()
     if cleaned in store:
         return store[cleaned]
-    # 3) ChatGPT補完（仮の呼び出し例）
-    prompt = (
-    f"""
-以下は「{field_name}」の飲食店名の表記ゆれです。正しい店名を1つだけ返してください。
 
-【タスク】
-- 入力の表記ゆれを正し、店舗名を1つに正規化する。
-- もとの名称に忠実。法人格・部門名・「様」「分」「スタッフ」などは除外。
-- 「○○店」等が元に含まれていれば残す。
-- 「ー」（長音符）や「-」「—」「–」「─」「―」は意図どおり残す（削除しない）。
-- 英数字は半角、アルファベットは**大文字**に統一。
-- **スペースは一切入れない。** 括弧類 “”「」() は入れない。
-- 本来そのような名前でないはずなのに全てカタカナやアルファベットにするような名寄せはしてはいけない。
+    # 3) 類似候補を mapping_store から取得（上位3件）
+    store_keys = list(store.keys())
+    top3 = _top_k_similar(cleaned, store_keys)
+    # 0.80以上のみ候補として採用（弱い候補は載せない）
+    cand_names = [store[k] for k, score in top3 if score >= CAND_THRESHOLD]
 
-【よくある誤りを必ず修正】
-- 「イスト」→「イースト」
-- 「ガデン」→「ガーデン」
-- 地名の読み間違い例：「所沢(トコロザワ)」「下富(シモトミ)」
-- 余計な1文字混入（例：「ス寿司虎…」「ユゆず庵…」など）は除去
+    # 4) プロンプトを作成（候補があれば同梱）
+    prompt = _build_prompt(field_name=field_name, cleaned=cleaned,
+                           candidates=cand_names if cand_names else None)
 
-【不確実な場合】
-- 店舗名に自信が持てない場合は、**入力（クリーニング後）の文字列をそのまま返す**。
-- でっち上げ・推測の追加は禁止。
-
-【出力形式（厳守）】
-- 名称のみ1行。**前後に空白なし、改行なし**。
-
-【入力】:
-{cleaned}
-
-【出力例】
-椿屋カフェ北千住マルイ店
-丸源ラーメン仙台泉店
-"""
-)
-
-
-    response = call_chatgpt_api(prompt)
-    normalized = response.strip()
-
-    # 6) API自体は成功しても「そのまま返し」や空文字なら名寄せ失敗扱い
-    #if not normalized or normalized == cleaned:
-    if not normalized:
-        log_unmatched(
-            '名寄せ失敗',
-            f"{field_name}: 候補={cleaned} → 正式名称取得失敗"
-        )
+    # 5) LLM呼び出し（リトライ付き）
+    try:
+        response = _call_llm_with_retry(prompt)
+    except Exception as e:
+        # APIが落ちた場合は安全にフォールバック
+        log_unmatched('名寄せ失敗', f"{field_name}: 候補={cleaned} → API失敗: {e}")
         return cleaned
 
-    # 4) 辞書追加
-    if normalized:
-        append_mapping(cleaned, normalized, field_name)
-        store[cleaned] = normalized
+    # 6) 出力ガードで体裁/安全性を確保
+    normalized = _finalize_llm_name(response, fallback=cleaned)
 
-    # 5) フォールバック
+    # 7) 空やNoneは失敗扱い（通常はfallbackで非空になる）
+    if not normalized:
+        log_unmatched('名寄せ失敗', f"{field_name}: 候補={cleaned} → 正式名称取得失敗")
+        return cleaned
+
+    # 8) 辞書追加（同一でも追加してOK：次回以降は即ヒット）
+    append_mapping(cleaned, normalized, field_name)
+    store[cleaned] = normalized
+
+    # 9) フォールバック
     return normalized or cleaned
+
+
 
 
 # ─── ヘッダ正規化強化 ───
@@ -424,7 +528,7 @@ def is_summary_row(row: pd.Series) -> bool:
         .astype(str)
         .str.replace(r'\s+', '', regex=True)  # 空白をすべて削除
     )
-    return texts.str.contains(r'小計|合計', na=False).any()
+    return texts.str.contains(r'小計|合計|総計', na=False).any()
 
 def extract_items(df: pd.DataFrame, meta: dict) -> list[dict]:
     # ─── 小計・合計行を除外 ───
