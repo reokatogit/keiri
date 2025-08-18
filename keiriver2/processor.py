@@ -157,12 +157,41 @@ def _jaccard(a: Iterable[str], b: Iterable[str]) -> float:
     return len(sa & sb) / max(1, len(sa | sb))
 
 
+KNOWN_BRANDS = [
+    "くら寿司",
+    "スシロー",
+    "焼肉きんぐ",
+    "スターバックス",
+    "ガスト",
+    "丸源ラーメン",
+    "はま寿司",
+    "吉野家",
+    "松屋",
+    "マクドナルド",
+    "ケンタッキー",
+    "サイゼリヤ",
+    "リンガーハット",
+]
+
 def _brand_token(s: str) -> str:
-    """先頭のブランドっぽいトークン（例：「くら寿司」「焼肉きんぐ」など）。"""
+    """
+    店舗名からブランド名を推定して返す。
+    1. KNOWN_BRANDS に登録済みならそれを返す
+    2. 未登録なら「店」やスペースの前までを返す
+    3. それもなければ先頭6文字を返す
+    """
+    # ブランド辞書優先
+    for brand in KNOWN_BRANDS:
+        if s.startswith(brand):
+            return brand
+
+    # 「店」「スペース」などで区切る
     for sep in ("店", " ", "　"):
         idx = s.find(sep)
         if idx > 0:
             return s[:idx]
+
+    # フォールバック：先頭6文字
     return s[:min(6, len(s))]
 
 
@@ -173,22 +202,27 @@ def _similarity(a: str, b: str) -> float:
     return 0.6 * seq + 0.4 * j + bonus
 
 
-CAND_THRESHOLD = 0.80  # 0.80以上のみ候補として採用
-TOP_K = 3              # 上位3件
-
+CAND_THRESHOLD = 0.80
+TOP_K = 3
 
 def _top_k_similar(cleaned: str, store_keys: Iterable[str]) -> List[Tuple[str, float]]:
     scored = [(key, _similarity(cleaned, key)) for key in store_keys]
     scored.sort(key=lambda x: x[1], reverse=True)
     return scored[:TOP_K]
 
-
 # =========================
 # プロンプト生成
 # =========================
 def _build_prompt(field_name: str, cleaned: str, candidates: Optional[List[str]]) -> str:
-    cand_line = " / ".join(candidates) if candidates else ""
-    cand_section = f"【候補】{cand_line}\n" if candidates else ""
+    cand_section = ""
+    if candidates:
+        cand_line = " / ".join(candidates)
+        cand_section = (
+            f"【候補】{cand_line}\n"
+            f"※これらは同じブランド名の参考です。ただし店舗名は違う可能性が高いので、"
+            f"入力（{cleaned}）の地名や店舗名を優先してください。\n\n"
+        )
+
     return (
         f"以下は「{field_name}」の店舗名の表記ゆれです。正しい店名を1つだけ返してください。\n\n"
         "【タスク】\n"
@@ -200,7 +234,6 @@ def _build_prompt(field_name: str, cleaned: str, candidates: Optional[List[str]]
         "- スペースは一切入れない。括弧（“”「」()）は入れない。\n"
         "- 本来そのような名前でないのに全てカタカナ/アルファベット化する名寄せはしない。\n\n"
         "【よくある誤りを必ず修正】\n"
-        "- 「イスト」→「イースト」 / 「ガデン」→「ガーデン」\n"
         "- 地名の誤読は正す（例：所沢、下富 など）\n"
         "- 余計な1文字混入（例：「ス寿司虎…」「ユゆず庵…」）は除去\n\n"
         + cand_section +

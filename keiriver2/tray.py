@@ -6,9 +6,10 @@ from PIL import Image
 from watch_folder import run_batch_watcher_loop, stop_batch_watcher
 from get_api_key import get_openai_api_key
 from settings import SettingsDialog
-from config import UNMATCHED_LOG, WATCH_LOG
+from config import UNMATCHED_LOG, WATCH_LOG, MAPPING_STORE_PATH
 from mapping_utils import sort_mapping_store 
 from win10toast import ToastNotifier            
+
 
 LOCK_PORT = 39393
 _lock_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -22,10 +23,10 @@ toaster = ToastNotifier()
 def on_sort_mapping_store(icon, item):
     try:
         sort_mapping_store()
-        # 完了通知（icon_pathは有効なパスを渡す）
+        # 完了通知
         ico_path = os.path.abspath("icon.ico")
         if not os.path.exists(ico_path):
-            ico_path = None  # ファイルが無ければデフォルトアイコン
+            ico_path = None
         toaster.show_toast(
             "辞書ソート完了",
             "mapping_store.csv を並び替えました。",
@@ -79,6 +80,12 @@ def show_tray_icon():
         print(f"[ERROR] APIキー取得失敗: {e}")
     start_watcher()
 
+    def open_mapping_store():
+        if os.path.exists(MAPPING_STORE_PATH):
+            os.system(f'start excel "{MAPPING_STORE_PATH}"')  # Excelで開く
+        else:
+            mb.showinfo("辞書が見つかりません", f"{MAPPING_STORE_PATH} が存在しません。")
+
     # アイコン読み込み
     ico_path = os.path.abspath("icon.ico")
     try:
@@ -91,9 +98,11 @@ def show_tray_icon():
     menu = Menu(
         MenuItem("📂ログフォルダを開く", lambda i, _: open_log_folder()),
         MenuItem("⚙️設定", on_open_settings),
+        MenuItem("📖辞書を開く", lambda i, _: open_mapping_store()),
         MenuItem("🔃辞書をソート", on_sort_mapping_store),
         MenuItem("🔄再起動", restart_app),
         MenuItem("❌終了", quit_app),
     )
+
     icon = Icon("keiri_system", icon_image, "帳簿アップロード監視", menu=menu)
     icon.run()
