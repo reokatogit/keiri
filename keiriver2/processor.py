@@ -12,12 +12,49 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 import difflib
 import pandas as pd
+from mapping_store_db import load_mapping_store, append_mapping
+
+from db_customer import ensure_schema, get_first_seen, upsert_first_seen
+# 顧客タグ付与関数
+def add_customer_tag(df):
+    """
+    DataFrameに顧客タグ（新規/既存）列を付与する。
+    店舗名・日付（YYYY-MM）が両方揃っていれば判定、どちらか欠落なら空欄。
+    """
+    ensure_schema()
+    tags = []
+    for idx, row in df.iterrows():
+        store = row.get('店舗名')
+        date = row.get('日付')
+        ym = ''
+        if isinstance(date, str) and len(date) >= 7:
+            ym = date[:7]
+        if not store or not ym:
+            # 欠損時はエラーログをwatch_folder.logに出力
+            try:
+                from logger import error
+                error('顧客タグ付与失敗', 行番号=idx, 店舗名=store, 日付=date)
+            except Exception:
+                pass
+            tags.append('')
+            continue
+        first_seen = get_first_seen(store)
+        if first_seen is None:
+            upsert_first_seen(store, ym)
+            tags.append('新規')
+        elif first_seen == ym:
+            tags.append('新規')
+        else:
+            tags.append('既存')
+    df = df.copy()
+    df['顧客タグ'] = tags
+    return df
 
 # --- OpenAI (任意: 無ければ後で例外にする) ---
 try:
     import openai  # noqa: F401
 except Exception:
-    openai = None  # noqa: F401
+        store = load_mapping_store()  # This now uses the new function from mapping_store_db
 
 # --- ロガー（存在しない場合は安全なフォールバック） ---
 try:
@@ -769,6 +806,8 @@ def handle_new_file(filepath: str) -> None:
             archive_file(path, success=True)
 
     df_month = pd.DataFrame(all_records_month)
+    df_month = add_customer_tag(df_month)
+    print(f"[EXTRACT-MONTH] 総レコード数: {len(df_month)} 件")
     notice("月次の抽出が完了しました", レコード件数=len(df_month))
 
     # ⑤ 年次：パス補正 → basename 重複排除 → 抽出 → （WATCH内のみ）アーカイブ
@@ -818,6 +857,8 @@ def handle_new_file(filepath: str) -> None:
                 archive_file(path, success=False)
 
     df_year = pd.DataFrame(all_records_year)
+    df_year = add_customer_tag(df_year)
+    print(f"[EXTRACT-YEAR] 総レコード数: {len(df_year)} 件")
     notice("年次の抽出が完了しました", レコード件数=len(df_year))
 
     # ⑥ 出力設定（列幅マップ）
@@ -825,6 +866,7 @@ def handle_new_file(filepath: str) -> None:
         '部署': 8, '下請け': 20, '日付': 20,
         '店舗名': 45, '作業項目/商品名': 60,
         '数量': 8, '単価': 15, '金額': 20,
+        '顧客タグ': 10
     }
 
     # ⑥-1) 月次部署別出力
