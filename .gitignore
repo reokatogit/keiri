@@ -1,0 +1,5 @@
+keiriver2/*.sqlite3
+keiriver2/customer_registry.csv
+keiriver2/__pycache__/
+logs/
+.env
